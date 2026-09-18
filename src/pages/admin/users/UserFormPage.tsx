@@ -1,0 +1,209 @@
+import { Form, Formik } from "formik";
+import { useNavigate, useParams } from "react-router-dom";
+import * as Yup from "yup";
+
+import {
+  useCreateUserMutation,
+  useGetUserQuery,
+  useResendTemporaryPasswordMutation,
+  useUpdateUserMutation,
+} from "@/api/usersApi";
+import { useListRolesQuery, useListRoleTypesQuery } from "@/api/rolesApi";
+import { getFieldErrors, toFormikErrors } from "@/api/apiError";
+import {
+  PROJECTS,
+  PROJECT_FORBIDDEN_ROLE_TYPES,
+  PROJECT_REQUIRED_ROLE_TYPES,
+  type RoleTypeCode,
+  type UserCreatePayload,
+} from "@/api/types";
+import { Button } from "@/components/ui/Button";
+import { SelectField, TextField } from "@/components/ui/FormField";
+import { ErrorState, LoadingState } from "@/components/ui/StateViews";
+import { useAuth } from "@/features/auth/useAuth";
+import { useToast } from "@/features/ui/useToast";
+
+interface UserFormValues {
+  email: string;
+  first_name: string;
+  last_name: string;
+  emp_id: string;
+  role_id: string;
+  project_id: string;
+}
+
+const DEV_ONLY_TEMP_PASSWORD_NOTE =
+  "DEV-ONLY: the temporary password isn't emailed yet — it's only visible in the backend server log. " +
+  "Replace this once the mailing system ships.";
+
+export function UserFormPage() {
+  const { id } = useParams<{ id: string }>();
+  const userId = id ? Number(id) : undefined;
+  const isEditMode = userId !== undefined;
+
+  const {
+    data: user,
+    isLoading: isLoadingUser,
+    isError: isUserError,
+    refetch: refetchUser,
+  } = useGetUserQuery(userId as number, { skip: !isEditMode });
+  const { data: roles, isLoading: isLoadingRoles } = useListRolesQuery();
+  const { data: roleTypes, isLoading: isLoadingRoleTypes } = useListRoleTypesQuery();
+
+  const [createUser] = useCreateUserMutation();
+  const [updateUser] = useUpdateUserMutation();
+  const [resendTemporaryPassword, { isLoading: isResending }] = useResendTemporaryPasswordMutation();
+  const navigate = useNavigate();
+  const { notifyInfo } = useToast();
+  const { canManageRoleType } = useAuth();
+
+  const isLoading = isLoadingRoles || isLoadingRoleTypes || (isEditMode && isLoadingUser);
+  if (isLoading) return <LoadingState label="Loading…" />;
+  if (isEditMode && isUserError) return <ErrorState message="Couldn't load this user." onRetry={refetchUser} />;
+  if (isEditMode && !user) return <ErrorState message="That user could not be found." />;
+
+  const roleTypeCodeByRoleTypeId = new Map((roleTypes ?? []).map((rt) => [rt.id, rt.code]));
+  const roleTypeCodeByRoleId = new Map(
+    (roles ?? []).map((role) => [role.id, roleTypeCodeByRoleTypeId.get(role.role_type_id)]),
+  );
+
+  // §2's project rule, client-mirrored purely for instant feedback — the
+  // backend (validate_project_for_role) is what actually enforces it.
+  const projectRuleFor = (roleId: string): "required" | "forbidden" | "unknown" => {
+    const code = roleTypeCodeByRoleId.get(Number(roleId));
+    if (!code) return "unknown";
+    if (PROJECT_REQUIRED_ROLE_TYPES.has(code)) return "required";
+    if (PROJECT_FORBIDDEN_ROLE_TYPES.has(code)) return "forbidden";
+    return "unknown";
+  };
+
+  // Only roles whose role type the current actor may create/manage, per
+  // hierarchy.ts — a UX filter; the backend re-checks regardless.
+  const assignableRoles = (roles ?? []).filter((role) => {
+    const code = roleTypeCodeByRoleTypeId.get(role.role_type_id);
+    return role.is_active && code !== undefined && canManageRoleType(code as RoleTypeCode);
+  });
+
+  const initialValues: UserFormValues = {
+    email: user?.email ?? "",
+    first_name: user?.first_name ?? "",
+    last_name: user?.last_name ?? "",
+    emp_id: user?.emp_id ?? "",
+    role_id: user ? String(user.role_id) : "",
+    project_id: user?.project_id != null ? String(user.project_id) : "",
+  };
+
+  const validationSchema = Yup.object({
+    email: Yup.string().required("Email is required").email("Enter a valid email address"),
+    first_name: Yup.string().required("First name is required").max(128),
+    last_name: Yup.string().required("Last name is required").max(128),
+    emp_id: Yup.string().required("Employee ID is required").max(64),
+    role_id: Yup.string().required("Role is required"),
+    project_id: Yup.string().when("role_id", {
+      is: (roleId: string) => projectRuleFor(roleId) === "required",
+      then: (schema) => schema.required("Project is required for this role"),
+      otherwise: (schema) => schema.notRequired(),
+    }),
+  });
+
+  const handleSubmit = async (
+    values: UserFormValues,
+    helpers: { setSubmitting: (v: boolean) => void; setErrors: (errors: Record<string, string>) => void },
+  ) => {
+    const rule = projectRuleFor(values.role_id);
+    const payload: UserCreatePayload = {
+      email: values.email,
+      first_name: values.first_name,
+      last_name: values.last_name,
+      emp_id: values.emp_id,
+      role_id: Number(values.role_id),
+      project_id: rule === "required" && values.project_id ? Number(values.project_id) : null,
+    };
+
+    const result = isEditMode ? await updateUser({ id: userId as number, body: payload }) : await createUser(payload);
+
+    if ("error" in result) {
+      // onQueryStarted already toasted the backend's message; field-level
+      // 422 errors additionally map onto the form here.
+      const fieldErrors = getFieldErrors(result.error);
+      if (fieldErrors) helpers.setErrors(toFormikErrors(fieldErrors));
+      helpers.setSubmitting(false);
+      return;
+    }
+
+    if (!isEditMode) {
+      notifyInfo(`A temporary password was generated for this account. ${DEV_ONLY_TEMP_PASSWORD_NOTE}`);
+    }
+    navigate("/admin/users");
+  };
+
+  const handleResend = async () => {
+    if (userId === undefined) return;
+    const result = await resendTemporaryPassword(userId);
+    if ("error" in result) return;
+    notifyInfo(DEV_ONLY_TEMP_PASSWORD_NOTE);
+  };
+
+  return (
+    <div className="max-w-lg">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-content-primary">{isEditMode ? "Edit user" : "New user"}</h1>
+        {isEditMode && (
+          <Button variant="secondary" onClick={handleResend} isLoading={isResending}>
+            Resend temporary password
+          </Button>
+        )}
+      </div>
+
+      {!isEditMode && (
+        <p className="mt-3 rounded-md bg-brand-50 px-3 py-2 text-sm text-brand-700">
+          A temporary password will be generated automatically — there's no password field here. {DEV_ONLY_TEMP_PASSWORD_NOTE}
+        </p>
+      )}
+
+      <Formik
+        initialValues={initialValues}
+        validationSchema={validationSchema}
+        enableReinitialize
+        onSubmit={handleSubmit}
+      >
+        {({ isSubmitting, values }) => {
+          const rule = projectRuleFor(values.role_id);
+          return (
+            <Form className="mt-6 flex flex-col gap-4 rounded-lg border border-border bg-surface p-6">
+              <TextField label="Email" name="email" type="email" />
+              <TextField label="First name" name="first_name" />
+              <TextField label="Last name" name="last_name" />
+              <TextField label="Employee ID" name="emp_id" />
+              <SelectField label="Role" name="role_id" placeholder="Select a role…">
+                {assignableRoles.map((role) => (
+                  <option key={role.id} value={role.id}>
+                    {role.title}
+                  </option>
+                ))}
+              </SelectField>
+              {rule !== "forbidden" && (
+                <SelectField label="Project" name="project_id" placeholder="Select a project…">
+                  {PROJECTS.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </SelectField>
+              )}
+
+              <div className="mt-2 flex gap-2">
+                <Button type="submit" isLoading={isSubmitting}>
+                  Save
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => navigate("/admin/users")}>
+                  Cancel
+                </Button>
+              </div>
+            </Form>
+          );
+        }}
+      </Formik>
+    </div>
+  );
+}

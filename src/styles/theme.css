@@ -1,0 +1,54 @@
+/*
+ * Centralized design tokens. Every color/radius/shadow the app uses is
+ * declared here as a CSS custom property and re-exposed to Tailwind via
+ * tailwind.config.ts — components use Tailwind classes (bg-brand-600,
+ * text-content-secondary, ...), never raw hex values.
+ */
+:root {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* Brand scale */
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #dbe7fe;
+  --color-brand-200: #bfd4fe;
+  --color-brand-300: #93b5fd;
+  --color-brand-400: #608bfa;
+  --color-brand-500: #3b66f5;
+  --color-brand-600: #2547ea;
+  --color-brand-700: #1e37d1;
+  --color-brand-800: #202fa8;
+  --color-brand-900: #1f2b85;
+
+  /* Surfaces */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f6f7fb;
+  --color-surface-inset: #eef0f6;
+
+  /* Borders */
+  --color-border: #e2e4ec;
+  --color-border-strong: #c7cade;
+
+  /* Content (text) */
+  --color-content-primary: #171923;
+  --color-content-secondary: #4a4f63;
+  --color-content-muted: #7a7f95;
+  --color-content-inverted: #ffffff;
+
+  /* Semantic */
+  --color-success: #157f45;
+  --color-success-bg: #e7f6ee;
+  --color-danger: #c8283c;
+  --color-danger-bg: #fbe9eb;
+  --color-warning: #a15c07;
+  --color-warning-bg: #fdf1de;
+
+  /* Shape */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* Elevation */
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.06), 0 1px 3px 0 rgb(15 23 42 / 0.08);
+  --shadow-popover: 0 8px 24px -4px rgb(15 23 42 / 0.16);
+}
