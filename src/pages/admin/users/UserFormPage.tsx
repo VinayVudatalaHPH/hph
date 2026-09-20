@@ -5,6 +5,7 @@ import * as Yup from "yup";
 import {
   useCreateUserMutation,
   useGetUserQuery,
+  useListUsersQuery,
   useResendTemporaryPasswordMutation,
   useUpdateUserMutation,
 } from "@/api/usersApi";
@@ -30,6 +31,7 @@ interface UserFormValues {
   emp_id: string;
   role_id: string;
   project_id: string;
+  reports_to_id: string;
 }
 
 const DEV_ONLY_TEMP_PASSWORD_NOTE =
@@ -49,15 +51,16 @@ export function UserFormPage() {
   } = useGetUserQuery(userId as number, { skip: !isEditMode });
   const { data: roles, isLoading: isLoadingRoles } = useListRolesQuery();
   const { data: roleTypes, isLoading: isLoadingRoleTypes } = useListRoleTypesQuery();
+  const { data: activeUsers, isLoading: isLoadingActiveUsers } = useListUsersQuery("active");
 
   const [createUser] = useCreateUserMutation();
   const [updateUser] = useUpdateUserMutation();
   const [resendTemporaryPassword, { isLoading: isResending }] = useResendTemporaryPasswordMutation();
   const navigate = useNavigate();
   const { notifyInfo } = useToast();
-  const { canManageRoleType } = useAuth();
+  const { canManageRoleType, user: currentUser } = useAuth();
 
-  const isLoading = isLoadingRoles || isLoadingRoleTypes || (isEditMode && isLoadingUser);
+  const isLoading = isLoadingRoles || isLoadingRoleTypes || isLoadingActiveUsers || (isEditMode && isLoadingUser);
   if (isLoading) return <LoadingState label="Loading…" />;
   if (isEditMode && isUserError) return <ErrorState message="Couldn't load this user." onRetry={refetchUser} />;
   if (isEditMode && !user) return <ErrorState message="That user could not be found." />;
@@ -91,6 +94,7 @@ export function UserFormPage() {
     emp_id: user?.emp_id ?? "",
     role_id: user ? String(user.role_id) : "",
     project_id: user?.project_id != null ? String(user.project_id) : "",
+    reports_to_id: user?.reports_to_id != null ? String(user.reports_to_id) : "",
   };
 
   const validationSchema = Yup.object({
@@ -104,6 +108,14 @@ export function UserFormPage() {
       then: (schema) => schema.required("Project is required for this role"),
       otherwise: (schema) => schema.notRequired(),
     }),
+    reports_to_id: Yup.string().when("role_id", {
+      is: (roleId: string) => {
+        const code = roleTypeCodeByRoleId.get(Number(roleId));
+        return code === "lead" || code === "employee";
+      },
+      then: (schema) => schema.required("Reporting parent is required"),
+      otherwise: (schema) => schema.notRequired(),
+    }),
   });
 
   const handleSubmit = async (
@@ -111,6 +123,7 @@ export function UserFormPage() {
     helpers: { setSubmitting: (v: boolean) => void; setErrors: (errors: Record<string, string>) => void },
   ) => {
     const rule = projectRuleFor(values.role_id);
+    const selectedRoleType = roleTypeCodeByRoleId.get(Number(values.role_id));
     const payload: UserCreatePayload = {
       email: values.email,
       first_name: values.first_name,
@@ -118,6 +131,10 @@ export function UserFormPage() {
       emp_id: values.emp_id,
       role_id: Number(values.role_id),
       project_id: rule === "required" && values.project_id ? Number(values.project_id) : null,
+      reports_to_id:
+        (selectedRoleType === "lead" || selectedRoleType === "employee") && values.reports_to_id
+          ? Number(values.reports_to_id)
+          : null,
     };
 
     const result = isEditMode ? await updateUser({ id: userId as number, body: payload }) : await createUser(payload);
@@ -169,6 +186,22 @@ export function UserFormPage() {
       >
         {({ isSubmitting, values }) => {
           const rule = projectRuleFor(values.role_id);
+          const selectedRoleType = roleTypeCodeByRoleId.get(Number(values.role_id));
+          const parentRoleType = selectedRoleType === "lead" ? "manager" : selectedRoleType === "employee" ? "lead" : null;
+          const reportingCandidates = (activeUsers ?? []).filter(
+            (candidate) => {
+              if (
+                candidate.id === userId ||
+                candidate.role.roleType !== parentRoleType ||
+                candidate.project_id !== Number(values.project_id)
+              ) {
+                return false;
+              }
+              if (currentUser?.role.roleType !== "manager") return true;
+              if (parentRoleType === "manager") return candidate.id === currentUser.id;
+              return candidate.reports_to_id === currentUser.id;
+            },
+          );
           return (
             <Form className="mt-6 flex flex-col gap-4 rounded-lg border border-border bg-surface p-6">
               <TextField label="Email" name="email" type="email" />
@@ -187,6 +220,19 @@ export function UserFormPage() {
                   {PROJECTS.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}
+                    </option>
+                  ))}
+                </SelectField>
+              )}
+              {parentRoleType && (
+                <SelectField
+                  label={parentRoleType === "manager" ? "Manager" : "Lead"}
+                  name="reports_to_id"
+                  placeholder={`Select a ${parentRoleType}…`}
+                >
+                  {reportingCandidates.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.first_name} {candidate.last_name} ({candidate.emp_id})
                     </option>
                   ))}
                 </SelectField>

@@ -2,9 +2,12 @@ import { Form, Formik } from "formik";
 import { useNavigate } from "react-router-dom";
 import * as Yup from "yup";
 
+import { apiSlice } from "@/api/apiSlice";
+import { HphLogo } from "@/components/brand/HphLogo";
 import { useSetPasswordMutation } from "@/api/authApi";
 import { getFieldErrors, toFormikErrors } from "@/api/apiError";
 import type { SetPasswordPayload } from "@/api/types";
+import { useAppDispatch } from "@/app/hooks";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/FormField";
 
@@ -26,6 +29,7 @@ const validationSchema = Yup.object({
 
 export function SetPasswordPage() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const [setPassword] = useSetPasswordMutation();
 
   const handleSubmit = async (
@@ -44,20 +48,27 @@ export function SetPasswordPage() {
       return;
     }
 
+    // The backend rotates the session after the password change. Treat the
+    // rotation as a fresh session boundary for all user-scoped API data.
+    dispatch(apiSlice.util.resetApiState());
     navigate("/", { replace: true });
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface-muted px-4">
-      <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-8 shadow-card">
-        <h1 className="text-xl font-semibold text-content-primary">Set a new password</h1>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 via-surface to-surface-muted px-4">
+      <div className="w-full max-w-md rounded-xl border border-border bg-surface p-8 shadow-popover">
+        <div className="mb-6 flex items-center gap-3">
+          <HphLogo />
+          <span className="font-semibold text-hph-blue">HPH Inhouse</span>
+        </div>
+        <h1 className="text-2xl font-semibold tracking-tight text-hph-blue">Set a new password</h1>
         <p className="mt-1 text-sm text-content-muted">
           This account is using a temporary password. Choose a new one to continue.
         </p>
 
         <Formik initialValues={initialValues} validationSchema={validationSchema} onSubmit={handleSubmit}>
           {({ isSubmitting }) => (
-            <Form className="mt-6 flex flex-col gap-4">
+            <Form className="mt-8 flex flex-col gap-5">
               <TextField
                 label="Current (temporary) password"
                 name="current_password"

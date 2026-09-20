@@ -13,7 +13,7 @@ export default function App() {
     <>
       {isLoading ? (
         <div className="flex min-h-screen items-center justify-center bg-surface-muted">
-          <LoadingState label="Loading Vitalyse Health…" />
+          <LoadingState label="Loading HPH Inhouse…" />
         </div>
       ) : (
         <AppRoutes />

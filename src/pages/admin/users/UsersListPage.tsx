@@ -20,10 +20,12 @@ const projectName = (projectId: number | null) => PROJECTS.find((p) => p.id === 
 export function UsersListPage() {
   const [statusTab, setStatusTab] = useState<UserStatusFilter>("all");
   const { data: users, isLoading, isError, refetch } = useListUsersQuery(statusTab);
-  const { canManageRoleType } = useAuth();
+  const { canManageRoleType, canWriteFeature } = useAuth();
+  const canWriteUsers = canWriteFeature("user_management");
 
   const [deactivateUser, { isLoading: isDeactivating }] = useDeactivateUserMutation();
   const [pendingDeactivate, setPendingDeactivate] = useState<AdminUser | null>(null);
+  const userNameById = new Map(users?.map((user) => [user.id, `${user.first_name} ${user.last_name}`]));
 
   const handleDeactivate = async () => {
     if (!pendingDeactivate) return;
@@ -39,9 +41,11 @@ export function UsersListPage() {
           <h1 className="text-lg font-semibold text-content-primary">Users</h1>
           <p className="text-sm text-content-muted">Everyone with an account in this system.</p>
         </div>
-        <Link to="/admin/users/new">
-          <Button>New user</Button>
-        </Link>
+        {canWriteUsers && (
+          <Link to="/admin/users/new">
+            <Button>New user</Button>
+          </Link>
+        )}
       </div>
 
       <div className="flex gap-1 border-b border-border">
@@ -74,13 +78,14 @@ export function UsersListPage() {
                 <th className="px-4 py-3 font-medium">Employee ID</th>
                 <th className="px-4 py-3 font-medium">Role</th>
                 <th className="px-4 py-3 font-medium">Project</th>
+                <th className="px-4 py-3 font-medium">Reports to</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {users.map((user) => {
-                const canManage = canManageRoleType(user.role.roleType);
+                const canManage = canWriteUsers && canManageRoleType(user.role.roleType);
                 return (
                   <tr key={user.id}>
                     <td className="px-4 py-3 text-content-primary">
@@ -100,6 +105,9 @@ export function UsersListPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-content-secondary">{projectName(user.project_id)}</td>
+                    <td className="px-4 py-3 text-content-secondary">
+                      {user.reports_to_id ? userNameById.get(user.reports_to_id) ?? "Unknown user" : "—"}
+                    </td>
                     <td className="px-4 py-3">
                       <Badge tone={user.is_active ? "success" : "neutral"}>
                         {user.is_active ? "Active" : "Inactive"}
@@ -107,9 +115,11 @@ export function UsersListPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
-                        <Link to={`/admin/users/${user.id}`}>
-                          <Button variant="secondary">Edit</Button>
-                        </Link>
+                        {canManage && (
+                          <Link to={`/admin/users/${user.id}`}>
+                            <Button variant="secondary">Edit</Button>
+                          </Link>
+                        )}
                         {user.is_active && canManage && (
                           <Button variant="danger" onClick={() => setPendingDeactivate(user)}>
                             Deactivate

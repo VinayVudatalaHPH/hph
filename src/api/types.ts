@@ -17,6 +17,13 @@ export interface RoleProfile {
   roleType: RoleTypeCode;
   sessionTimeoutMinutes: number;
   features: string[]; // active feature codenames the role grants
+  featurePermissions?: FeaturePermission[];
+}
+
+export interface FeaturePermission {
+  codename: string;
+  canRead: boolean;
+  canWrite: boolean;
 }
 
 // GET /sessions/whoami, POST /sessions/login, POST /users/set-password
@@ -44,6 +51,7 @@ export interface AdminUser {
   role_id: number;
   role: RoleProfile;
   project_id: number | null;
+  reports_to_id: number | null;
   first_login: boolean;
   is_active: boolean;
   created_at: string;
@@ -58,8 +66,156 @@ export interface UserCreatePayload {
   emp_id: string;
   role_id: number;
   project_id?: number | null;
+  reports_to_id?: number | null;
 }
 export type UserUpdatePayload = Partial<UserCreatePayload>;
+
+export interface TeamLeadSummary {
+  id: number;
+  firstName: string;
+  lastName: string;
+  empId: string;
+  coderCount: number;
+}
+
+export interface ManagerTeam {
+  leads: TeamLeadSummary[];
+  coders: PaginatedResult<AdminUser>;
+  totalCoders: number;
+  unassignedCount: number;
+}
+
+export type CodingRoleType = "lead" | "employee";
+
+export interface CodingUserSummary {
+  id: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  empId: string;
+  roleType: CodingRoleType;
+}
+
+export interface CohortMember {
+  user: CodingUserSummary;
+  joinedOn: string;
+  currentStage: string | null;
+}
+
+export interface TeamCohort {
+  id: number;
+  sequenceNo: number;
+  label: string;
+  windowStart: string;
+  windowEnd: string | null;
+  createdAt: string;
+  memberCount: number;
+  members: CohortMember[];
+}
+
+export type CoderStageFilter = "Training" | "M1" | "M2" | "M3" | "M4" | "Steady State" | "Unassigned";
+
+export interface TeamCoderOverviewItem {
+  coder: CodingUserSummary;
+  cohort: Pick<TeamCohort, "id" | "label"> | null;
+  currentStage: string | null;
+  dailyTarget: number | null;
+  lead: CodingUserSummary | null;
+}
+
+export interface TeamCoderOverviewQuery {
+  page: number;
+  pageSize: number;
+  cohortId?: number | null;
+  leadId?: number | null;
+  stageCode?: CoderStageFilter | null;
+}
+
+export interface CreateTeamCohortPayload {
+  label: string;
+  windowStart: string;
+  windowEnd?: string | null;
+  memberIds: number[];
+}
+
+export type TargetStageCode = "M1" | "M2" | "M3" | "M4" | "Steady State";
+
+export interface StageTargetRule {
+  id: number;
+  stage_code: string;
+  effective_from: string;
+  effective_to: string | null;
+  daily_target: number;
+  created_by_id: number;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface ChangeStageTargetPayload {
+  stageCode: TargetStageCode;
+  effectiveFrom: string;
+  dailyTarget: number;
+  reason?: string | null;
+}
+
+export interface LoginHoursUploadPayload {
+  sourceFilename: string;
+  fileBase64: string;
+}
+
+export interface LoginHoursUploadBatch {
+  id: number;
+  sourceFilename: string;
+  sourceFormat: string;
+  uploadedById: number;
+  uploadedAt: string;
+  rowCount: number;
+  matchedCount: number;
+  unmatchedCount: number;
+  unmatchedNames?: string[];
+}
+
+export interface LoginHourRecord {
+  id: number;
+  batchId: number;
+  userId: number;
+  userName: string;
+  date: string;
+  employeeNameRaw: string;
+  personnelId: string | null;
+  department: string | null;
+  firstIn: string | null;
+  lastOut: string | null;
+  totalInsideMinutes: number;
+  totalOutsideMinutes: number;
+  totalSpanMinutes: number;
+  entries: number;
+  exits: number;
+  status: string | null;
+  anomalies: number;
+}
+
+export interface LoginHourRecordQuery extends PaginationQuery {
+  from?: string | null;
+  to?: string | null;
+  userId?: number | null;
+  leadId?: number | null;
+  cohortId?: number | null;
+}
+
+export interface LoginHourFilterOption {
+  id: number;
+  label: string;
+}
+
+export interface LoginHourRecordPage extends PaginatedResult<LoginHourRecord> {
+  averageInsideMinutes: number | null;
+  filterOptions: {
+    users: LoginHourFilterOption[];
+    leads: LoginHourFilterOption[];
+    cohorts: LoginHourFilterOption[];
+  };
+}
 
 // GET/POST/PATCH /roles (RoleSchema) — snake_case; `features` is feature ids.
 export interface AdminRole {
@@ -68,8 +224,15 @@ export interface AdminRole {
   role_type_id: number;
   is_active: boolean;
   features: number[];
+  feature_permissions?: RoleFeaturePermission[];
   created_at: string;
   updated_at: string;
+}
+
+export interface RoleFeaturePermission {
+  feature_id: number;
+  can_read: boolean;
+  can_write: boolean;
 }
 
 export interface RolePayload {
@@ -77,6 +240,7 @@ export interface RolePayload {
   role_type_id: number;
   is_active?: boolean;
   features?: number[];
+  feature_permissions?: RoleFeaturePermission[];
 }
 
 // GET /role-types (RoleTypeSchema) — camelCase, read-only fixed seed data.
@@ -144,3 +308,298 @@ export const PROJECTS: ReadonlyArray<{ id: number; name: string }> = [
 
 export const PROJECT_REQUIRED_ROLE_TYPES: ReadonlySet<RoleTypeCode> = new Set(["manager", "lead", "employee"]);
 export const PROJECT_FORBIDDEN_ROLE_TYPES: ReadonlySet<RoleTypeCode> = new Set(["admin", "super_admin"]);
+
+// --- Kairon chart records (backend/app/kairon) — every schema there uses
+// explicit camelCase data_keys, so (unlike AdminUser above) these mirror the
+// wire format directly with no snake_case leftovers.
+
+export const KAIRON_LEVELS = ["1LR", "2LR", "3LR"] as const;
+export type KaironLevel = (typeof KAIRON_LEVELS)[number];
+
+export const KAIRON_STATUSES = ["Active", "On Hold", "Completed"] as const;
+export type KaironStatus = (typeof KAIRON_STATUSES)[number];
+
+// GET /kairon/charts (KaironChartRecordSchema).
+export interface KaironChartRecord {
+  id: number;
+  batchId: number;
+  program: string;
+  level: KaironLevel;
+  status: KaironStatus;
+  userId: number | null;
+  codingAnalyst: string;
+  actions: number;
+  lastAction: string | null;
+  created: string;
+  completed: string | null;
+  tat: number | null;
+  age: number | null;
+  practice: string | null;
+}
+
+export interface KaironChartQuery {
+  status?: KaironStatus | null;
+  level?: KaironLevel | null;
+  userId?: number | null;
+  userIds?: number[] | null;
+  asOfDate?: string | null;
+}
+
+// One row of POST /kairon/uploads (KaironChartRowSchema) — exactly the eleven
+// columns the reference template offers; there is deliberately no field
+// here for Patient or MBI.
+export interface KaironChartRowInput {
+  program: string;
+  level: KaironLevel;
+  status: KaironStatus;
+  codingAnalyst: string;
+  actions: number;
+  lastAction: string | null;
+  created: string;
+  completed: string | null;
+  tat: number | null;
+  age: number | null;
+  practice: string | null;
+}
+
+export interface KaironUploadPayload {
+  asOfDate: string;
+  sourceFilename?: string | null;
+  rows: KaironChartRowInput[];
+}
+
+// GET/POST /kairon/uploads (KaironUploadBatchSchema).
+export interface KaironUploadBatch {
+  id: number;
+  asOfDate: string;
+  sourceFilename: string | null;
+  uploadedById: number;
+  uploadedAt: string;
+  rowCount: number;
+  matchedCount: number;
+  unmatchedCount: number;
+  supersededAt: string | null;
+}
+
+export type KaironAnalystReviewStatus = "pending" | "resolved";
+
+// GET /kairon/analyst-reviews (KaironAnalystReviewSchema).
+export interface KaironAnalystReview {
+  id: number;
+  chartRecordId: number;
+  rawName: string;
+  status: KaironAnalystReviewStatus;
+  resolvedUserId: number | null;
+  resolvedById: number | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+// --- Manual daily records (backend/app/manual_daily_records) — also all
+// explicit camelCase data_keys.
+
+export type ManualDailyRecordStatus = "pending" | "approved" | "rejected";
+
+export const MANUAL_DAILY_RECORD_MAX_HOURS = 10;
+
+// GET /manual-daily-records, POST /manual-daily-records response
+// (ManualDailyRecordSchema). The four hour fields come back as strings
+// (as_string=True on the backend's Decimal field).
+export interface ManualDailyRecord {
+  id: number;
+  userId: number;
+  date: string;
+  productionCount: number;
+  pvpCount: number;
+  foundationCount: number;
+  techIssuesDowntimeHours: string;
+  noInventoryIdleTimeHours: string;
+  leaveHours: string;
+  meetingEngagementHours: string;
+  status: ManualDailyRecordStatus;
+  reviewedById: number | null;
+  reviewedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// POST /manual-daily-records body (ManualDailyRecordUpsertSchema) — no user
+// field; the record is always saved against whoever is logged in.
+export interface ManualDailyRecordUpsertPayload {
+  date: string;
+  pvpCount: number;
+  foundationCount: number;
+  techIssuesDowntimeHours: number;
+  noInventoryIdleTimeHours: number;
+  leaveHours: number;
+  meetingEngagementHours: number;
+}
+
+export interface ManualDailyRecordQuery {
+  fromDate?: string | null;
+  toDate?: string | null;
+  userId?: number | null;
+  userIds?: number[] | null;
+  excludeUserIds?: number[] | null;
+  leadId?: number | null;
+  status?: ManualDailyRecordStatus | null;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PaginationQuery {
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface KaironCompletedDailyCount {
+  date: string;
+  count: number;
+}
+
+export interface KaironCompletedUserSummary {
+  userId: number;
+  firstName: string;
+  lastName: string;
+  count: number;
+}
+
+export interface KaironCompletedUserQuery extends PaginationQuery {
+  completedDate: string;
+  analyst?: string | null;
+}
+
+export interface KaironCompletedRecordQuery extends PaginationQuery {
+  completedDate: string;
+  userId: number;
+}
+
+// --- Reports (backend/app/reports) — the personal "own data" view and its
+// manager-only bulk review actions. No new source tables; everything here
+// reads/updates Kairon chart records or Manual daily records.
+
+// GET /reports/kairon query — deliberately has no user_id/user_ids field;
+// this endpoint is always scoped server-side to the caller.
+export interface SelfKaironChartQuery extends PaginationQuery {
+  status?: KaironStatus | null;
+  level?: KaironLevel | null;
+  asOfDate?: string | null;
+}
+
+// POST /reports/manual/reviews/bulk-reject body item — one reason per
+// record, never one shared reason for the whole batch (§3.3).
+export interface BulkRejectItem {
+  id: number;
+  reason?: string | null;
+}
+
+export interface BulkReviewSkip {
+  id: number;
+  reason: string;
+}
+
+export interface BulkApproveResult {
+  approved: number[];
+  skipped: BulkReviewSkip[];
+}
+
+export interface BulkRejectResult {
+  rejected: number[];
+  skipped: BulkReviewSkip[];
+}
+
+// GET /dashboards/coding query — an explicit from/to range wins, then a
+// single `date`, then a `month` or `year` shorthand, then the default
+// (1st of the current month through today) when none are given. See
+// backend/app/reports/services.py's resolve_dashboard_window().
+export interface CodingDashboardQuery {
+  from?: string | null;
+  to?: string | null;
+  date?: string | null;
+  month?: string | null;
+  year?: number | null;
+  program?: "PVP" | "FOUNDATION" | null;
+  leadId?: number | null;
+  cohortId?: number | null;
+  includeDaily?: boolean;
+}
+
+export interface CodingDashboardKaironSummary {
+  active: number;
+  onHold: number;
+  completed: number;
+}
+
+export interface CodingDashboardManualSummary {
+  productionCount: number;
+  pvpCount: number;
+  foundationCount: number;
+  techIssuesDowntimeHours: string;
+  noInventoryIdleTimeHours: string;
+  leaveHours: string;
+  meetingEngagementHours: string;
+  pendingCount: number;
+  recordCount: number;
+}
+
+export interface DailyEfficiency {
+  date: string;
+  stage: string | null;
+  dailyTarget: number | null;
+  manualCharts: number;
+  kaironCharts: number;
+  insideMinutes: number | null;
+  downtimeMinutes: number;
+  idleMinutes: number;
+  leaveMinutes: number;
+  meetingMinutes: number;
+  excludedMinutes: number;
+  productiveMinutes: number | null;
+  targetMinutes: number | null;
+  adjustedTarget: string | null;
+  manualEfficiencyPercent: string | null;
+  kaironEfficiencyPercent: string | null;
+  manualCpd: string | null;
+  kaironCpd: string | null;
+  targetCpd: string | null;
+  manualStatus: "pending" | "approved" | "rejected" | null;
+}
+
+export interface EfficiencySummary {
+  from: string;
+  to: string;
+  manualCharts: number;
+  kaironCharts: number;
+  adjustedTarget: string;
+  insideMinutes: number;
+  loginDays: number;
+  productiveMinutes: number;
+  targetMinutes: number;
+  calculatedDays: number;
+  manualEfficiencyPercent: string | null;
+  kaironEfficiencyPercent: string | null;
+  manualCpd: string | null;
+  kaironCpd: string | null;
+  targetCpd: string | null;
+  daily: DailyEfficiency[];
+}
+
+// GET /dashboards/coding response item — one card per active user.
+export interface CodingDashboardCard {
+  userId: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  kairon: CodingDashboardKaironSummary;
+  manual: CodingDashboardManualSummary;
+  efficiency: EfficiencySummary;
+}

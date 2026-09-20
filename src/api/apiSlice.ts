@@ -2,12 +2,43 @@ import { createApi } from "@reduxjs/toolkit/query/react";
 
 import { apiBaseQuery } from "./baseQuery";
 
-export type TagType = "CurrentUser" | "Sessions" | "Users" | "Roles" | "Features" | "RoleTypes";
+export type TagType =
+  | "CurrentUser"
+  | "Sessions"
+  | "Users"
+  | "Roles"
+  | "Features"
+  | "RoleTypes"
+  | "KaironChartRecords"
+  | "KaironUploadBatches"
+  | "KaironAnalystReviews"
+  | "ManualDailyRecords"
+  | "CodingDashboard"
+  | "Team"
+  | "Cohorts"
+  | "StageTargets"
+  | "LoginHours";
 
 export const apiSlice = createApi({
   reducerPath: "api",
   baseQuery: apiBaseQuery,
-  tagTypes: ["CurrentUser", "Sessions", "Users", "Roles", "Features", "RoleTypes"],
+  tagTypes: [
+    "CurrentUser",
+    "Sessions",
+    "Users",
+    "Roles",
+    "Features",
+    "RoleTypes",
+    "KaironChartRecords",
+    "KaironUploadBatches",
+    "KaironAnalystReviews",
+    "ManualDailyRecords",
+    "CodingDashboard",
+    "Team",
+    "Cohorts",
+    "StageTargets",
+    "LoginHours",
+  ],
   endpoints: () => ({}),
 });
 

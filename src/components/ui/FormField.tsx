@@ -14,7 +14,7 @@ function FieldShell({ label, name, hint, children }: FieldShellProps) {
   const showError = meta.touched && Boolean(meta.error);
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {label && (
         <label htmlFor={name} className="text-sm font-medium text-content-secondary">
           {label}
@@ -31,9 +31,9 @@ function FieldShell({ label, name, hint, children }: FieldShellProps) {
   );
 }
 
-const inputClasses =
-  "rounded-md border border-border bg-surface px-3 py-2 text-sm text-content-primary shadow-sm " +
-  "focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 disabled:bg-surface-inset " +
+export const inputClasses =
+  "min-h-11 rounded-md border border-border bg-surface px-3.5 py-2.5 text-sm text-content-primary shadow-sm transition " +
+  "hover:border-border-strong focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-100 disabled:bg-surface-inset " +
   "aria-[invalid=true]:border-danger";
 
 type TextFieldProps = { label: string; name: string; hint?: string } & Omit<

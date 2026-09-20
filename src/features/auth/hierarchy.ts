@@ -16,3 +16,20 @@ export function canManageRoleType(actorRoleType: RoleTypeCode | undefined, targe
   if (!actorRoleType) return false;
   return CAN_MANAGE_ROLE_TYPE[actorRoleType].has(targetRoleType);
 }
+
+// Which role types' users should appear in an analyst-picker dropdown (e.g.
+// Kairon's "Analyst(s)" filter) for a given viewer. Deliberately separate
+// from CAN_MANAGE_ROLE_TYPE above: a lead can't manage anyone, but should
+// still see the employees under them when filtering chart records.
+const VISIBLE_ANALYST_ROLE_TYPES: Record<RoleTypeCode, ReadonlySet<RoleTypeCode>> = {
+  super_admin: new Set(["lead", "employee"]),
+  admin: new Set(["lead", "employee"]),
+  manager: new Set(["lead", "employee"]),
+  lead: new Set(["employee"]),
+  employee: new Set(),
+};
+
+export function visibleAnalystRoleTypes(actorRoleType: RoleTypeCode | undefined): RoleTypeCode[] {
+  if (!actorRoleType) return [];
+  return Array.from(VISIBLE_ANALYST_ROLE_TYPES[actorRoleType]);
+}

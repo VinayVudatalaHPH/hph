@@ -14,7 +14,8 @@ import { SessionTimeoutSection } from "./SessionTimeoutSection";
 export function RolesListPage() {
   const { data: roles, isLoading, isError, refetch } = useListRolesQuery();
   const { data: roleTypes } = useListRoleTypesQuery();
-  const { hasRoleType } = useAuth();
+  const { hasRoleType, canWriteFeature } = useAuth();
+  const canWriteRoles = canWriteFeature("role_management");
 
   const [deleteRole, { isLoading: isDeleting }] = useDeleteRoleMutation();
   const [pendingDelete, setPendingDelete] = useState<AdminRole | null>(null);
@@ -36,9 +37,11 @@ export function RolesListPage() {
           <h1 className="text-lg font-semibold text-content-primary">Roles</h1>
           <p className="text-sm text-content-muted">Role profiles and the features they grant.</p>
         </div>
-        <Link to="/admin/roles/new">
-          <Button>New role</Button>
-        </Link>
+        {canWriteRoles && (
+          <Link to="/admin/roles/new">
+            <Button>New role</Button>
+          </Link>
+        )}
       </div>
 
       {isLoading && <LoadingState label="Loading roles…" />}
@@ -67,16 +70,25 @@ export function RolesListPage() {
                       {role.is_active ? "Active" : "Inactive"}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 text-content-secondary">{role.features.length}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <Link to={`/admin/roles/${role.id}`}>
-                        <Button variant="secondary">Edit</Button>
-                      </Link>
-                      <Button variant="danger" onClick={() => setPendingDelete(role)}>
-                        Delete
-                      </Button>
+                  <td className="px-4 py-3 text-content-secondary">
+                    <div className="flex flex-wrap gap-1.5">
+                      <Badge tone="neutral">{role.features.length} enabled</Badge>
+                      <Badge tone="brand">
+                        {(role.feature_permissions ?? []).filter((permission) => permission.can_write).length} write
+                      </Badge>
                     </div>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {canWriteRoles && (
+                      <div className="flex justify-end gap-2">
+                        <Link to={`/admin/roles/${role.id}`}>
+                          <Button variant="secondary">Edit</Button>
+                        </Link>
+                        <Button variant="danger" onClick={() => setPendingDelete(role)}>
+                          Delete
+                        </Button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -85,7 +97,7 @@ export function RolesListPage() {
         </div>
       )}
 
-      {hasRoleType("super_admin") && <SessionTimeoutSection />}
+      {hasRoleType("super_admin") && canWriteRoles && <SessionTimeoutSection />}
 
       <ConfirmDialog
         open={pendingDelete !== null}

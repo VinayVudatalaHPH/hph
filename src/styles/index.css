@@ -12,4 +12,39 @@ body,
 
 body {
   @apply bg-surface-muted text-content-primary font-sans antialiased;
+  margin: 0;
+  background-image:
+    radial-gradient(circle at 100% 0%, rgb(243 230 250 / 0.72), transparent 28rem),
+    linear-gradient(180deg, #ffffff 0, var(--color-surface-muted) 24rem);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a {
+  @apply transition-colors;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-content-muted);
+}
+
+table tbody tr {
+  transition: background-color 150ms ease;
+}
+
+table tbody tr:hover {
+  background-color: var(--color-brand-50);
+}
+
+::selection {
+  color: var(--color-hph-blue);
+  background: var(--color-brand-200);
 }

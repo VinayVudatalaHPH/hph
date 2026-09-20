@@ -16,7 +16,7 @@ const validationSchema = Yup.object({
   active: Yup.boolean(),
 });
 
-export function FeatureFormPage() {
+export function FeatureFormPage({ embedded = false, onDone }: { embedded?: boolean; onDone?: () => void } = {}) {
   const { id } = useParams<{ id: string }>();
   const featureId = id ? Number(id) : undefined;
   const isEditMode = featureId !== undefined;
@@ -30,6 +30,7 @@ export function FeatureFormPage() {
   const [createFeature] = useCreateFeatureMutation();
   const [updateFeature] = useUpdateFeatureMutation();
   const navigate = useNavigate();
+  const closeForm = onDone ?? (() => navigate("/admin/features"));
 
   if (isEditMode && isLoading) return <LoadingState label="Loading feature…" />;
   if (isEditMode && isError) return <ErrorState message="Couldn't load features." onRetry={refetch} />;
@@ -59,12 +60,12 @@ export function FeatureFormPage() {
       return;
     }
 
-    navigate("/admin/features");
+    closeForm();
   };
 
   return (
-    <div className="max-w-lg">
-      <h1 className="text-lg font-semibold text-content-primary">{isEditMode ? "Edit feature" : "New feature"}</h1>
+    <div className={embedded ? "" : "max-w-lg"}>
+      {!embedded && <h1 className="text-lg font-semibold text-content-primary">{isEditMode ? "Edit feature" : "New feature"}</h1>}
 
       <Formik
         initialValues={initialValues}
@@ -73,7 +74,7 @@ export function FeatureFormPage() {
         onSubmit={handleSubmit}
       >
         {({ isSubmitting }) => (
-          <Form className="mt-6 flex flex-col gap-4 rounded-lg border border-border bg-surface p-6">
+          <Form className={embedded ? "flex flex-col gap-4" : "mt-6 flex flex-col gap-4 rounded-lg border border-border bg-surface p-6"}>
             <TextField label="Codename" name="codename" placeholder="e.g. user_management" />
             <TextField label="Title" name="title" />
             <TextField label="Description" name="description" />
@@ -83,7 +84,7 @@ export function FeatureFormPage() {
               <Button type="submit" isLoading={isSubmitting}>
                 Save
               </Button>
-              <Button type="button" variant="secondary" onClick={() => navigate("/admin/features")}>
+              <Button type="button" variant="secondary" onClick={closeForm}>
                 Cancel
               </Button>
             </div>

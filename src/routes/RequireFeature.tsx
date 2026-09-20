@@ -7,10 +7,18 @@ import { NotPermittedState } from "@/components/ui/StateViews";
 // Gates individual admin routes. Renders a "not permitted" state (not a
 // silent redirect) on failure — defense in depth, not the primary gate;
 // failing here means the nav itself was wrong to show the link.
-export function RequireFeature({ codename, children }: { codename: string; children: ReactNode }) {
+export function RequireFeature({
+  codename,
+  access = "read",
+  children,
+}: {
+  codename: string;
+  access?: "read" | "write";
+  children: ReactNode;
+}) {
   const { user, hasFeature } = useAuth();
 
-  if (!hasFeature(codename)) {
+  if (!hasFeature(codename, access)) {
     // A role with zero features assigned fails every RequireFeature check,
     // including the "/" dashboard route it lands on right after login — so
     // that specific case gets a message pointing at the actual fix (ask an
@@ -30,7 +38,13 @@ export function RequireFeature({ codename, children }: { codename: string; child
       );
     }
 
-    return <NotPermittedState />;
+    return (
+      <NotPermittedState>
+        {access === "write" && (
+          <p className="text-sm text-content-muted">Your role has read-only access to this feature.</p>
+        )}
+      </NotPermittedState>
+    );
   }
 
   return <>{children}</>;

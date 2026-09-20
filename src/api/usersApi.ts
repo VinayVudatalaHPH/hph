@@ -1,6 +1,7 @@
 import { apiSlice, providesList } from "./apiSlice";
 import { notifyOnSettle } from "./notify";
-import type { AdminUser, UserCreatePayload, UserUpdatePayload } from "./types";
+import { buildQueryString } from "./queryString";
+import type { AdminUser, ManagerTeam, UserCreatePayload, UserUpdatePayload } from "./types";
 
 export type UserStatusFilter = "all" | "active" | "inactive";
 
@@ -10,15 +11,46 @@ const LIST_PATH: Record<UserStatusFilter, string> = {
   inactive: "/users/inactive",
 };
 
+export interface UserFilterParams {
+  projectIds?: number[];
+  roleIds?: number[];
+}
+
+export interface ManagerTeamQuery {
+  page: number;
+  pageSize: number;
+  search?: string | null;
+  leadId?: number | null;
+}
+
 export const usersApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     listUsers: builder.query<AdminUser[], UserStatusFilter>({
       query: (status) => ({ url: LIST_PATH[status] }),
       providesTags: (result) => providesList("Users", result),
     }),
+    // GET /users/filter — scopes the list down to a project + role set
+    // instead of "everyone the caller can see" (listUsers above). Used by
+    // pickers that must only ever offer users below the viewer in the
+    // project's hierarchy (e.g. Kairon's Analyst(s) filter).
+    listUsersFiltered: builder.query<AdminUser[], UserFilterParams>({
+      query: (params) => ({ url: `/users/filter${buildQueryString(params)}` }),
+      providesTags: (result) => providesList("Users", result),
+    }),
     getUser: builder.query<AdminUser, number>({
       query: (id) => ({ url: `/users/${id}` }),
       providesTags: (_result, _error, id) => [{ type: "Users", id }],
+    }),
+    getMyManagerTeam: builder.query<ManagerTeam, ManagerTeamQuery>({
+      query: (params) => ({ url: `/teams/mine${buildQueryString(params)}` }),
+      providesTags: [{ type: "Team" }],
+    }),
+    assignManagerTeam: builder.mutation<AdminUser[], { coderIds: number[]; leadId: number }>({
+      query: (body) => ({ url: "/teams/mine/assign", method: "POST", body }),
+      invalidatesTags: [{ type: "Team" }, { type: "Users", id: "LIST" }],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        await notifyOnSettle(dispatch, queryFulfilled);
+      },
     }),
     createUser: builder.mutation<AdminUser, UserCreatePayload>({
       query: (body) => ({ url: "/users", method: "POST", body }),
@@ -59,7 +91,10 @@ export const usersApi = apiSlice.injectEndpoints({
 
 export const {
   useListUsersQuery,
+  useListUsersFilteredQuery,
   useGetUserQuery,
+  useGetMyManagerTeamQuery,
+  useAssignManagerTeamMutation,
   useCreateUserMutation,
   useUpdateUserMutation,
   useDeactivateUserMutation,

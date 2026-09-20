@@ -10,11 +10,26 @@ export function useAuth() {
   const user = useAppSelector((state) => state.auth.user);
   const status = useAppSelector((state) => state.auth.status);
 
+  const hasFeature = (codename: string, access: "read" | "write" = "read") => {
+    const permissions = user?.role.featurePermissions;
+    if (permissions) {
+      const permission = permissions.find((item) => item.codename === codename);
+      if (!permission) return false;
+      return access === "write" ? permission.canWrite : permission.canRead || permission.canWrite;
+    }
+
+    // Compatibility with sessions created before featurePermissions shipped:
+    // the former boolean grant represented full access.
+    return Boolean(user?.role.features.includes(codename));
+  };
+
   return {
     user,
     isLoading: status === "idle" || status === "loading",
     isAuthenticated: status === "authenticated" && user !== null,
-    hasFeature: (codename: string) => Boolean(user?.role.features.includes(codename)),
+    hasFeature,
+    canReadFeature: (codename: string) => hasFeature(codename, "read"),
+    canWriteFeature: (codename: string) => hasFeature(codename, "write"),
     hasRoleType: (code: RoleTypeCode) => user?.role.roleType === code,
     canManageRoleType: (targetRoleType: RoleTypeCode) => canManageRoleType(user?.role.roleType, targetRoleType),
   };

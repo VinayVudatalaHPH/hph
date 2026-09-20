@@ -9,9 +9,11 @@ import { AccountSessionsPage } from "@/pages/account/AccountSessionsPage";
 import { UsersListPage } from "@/pages/admin/users/UsersListPage";
 import { UserFormPage } from "@/pages/admin/users/UserFormPage";
 import { RolesListPage } from "@/pages/admin/roles/RolesListPage";
-import { RoleFormPage } from "@/pages/admin/roles/RoleFormPage";
 import { FeaturesListPage } from "@/pages/admin/features/FeaturesListPage";
-import { FeatureFormPage } from "@/pages/admin/features/FeatureFormPage";
+import { FeatureEditorDrawerPage, RoleEditorDrawerPage } from "@/pages/admin/AdminEditorDrawers";
+import { ReportsPage } from "@/pages/reports/ReportsPage";
+import { TeamManagementPage } from "@/pages/team/TeamManagementPage";
+import { LoginHoursPage } from "@/pages/loginHours/LoginHoursPage";
 
 import { RequireAuth } from "./RequireAuth";
 import { RequireFirstLoginComplete } from "./RequireFirstLoginComplete";
@@ -38,6 +40,44 @@ export function AppRoutes() {
               }
             />
             <Route path="/account" element={<AccountSessionsPage />} />
+            <Route path="/input-data" element={<Navigate to="/reports" replace />} />
+
+            {/* Personal Reports view (Reports doc §3) — its own `reports`
+                feature, granted to every starter role at launch but kept
+                distinct from "dashboard" per the doc's §2. */}
+            <Route
+              path="/reports"
+              element={
+                <RequireFeature codename="reports">
+                  <ReportsPage />
+                </RequireFeature>
+              }
+            />
+
+            <Route path="/coding" element={<Navigate to="/" replace />} />
+
+            <Route path="/kairon/*" element={<Navigate to="/reports" replace />} />
+            <Route path="/manual-daily-records" element={<Navigate to="/reports" replace />} />
+
+            <Route
+              path="/login-hours"
+              element={
+                <RequireFeature codename="login_hours">
+                  <LoginHoursPage />
+                </RequireFeature>
+              }
+            />
+
+            <Route
+              path="/team"
+              element={
+                <RequireFeature codename="user_management">
+                  <RequireRoleType code="manager">
+                    <TeamManagementPage />
+                  </RequireRoleType>
+                </RequireFeature>
+              }
+            />
 
             <Route
               path="/admin/users"
@@ -50,7 +90,7 @@ export function AppRoutes() {
             <Route
               path="/admin/users/new"
               element={
-                <RequireFeature codename="user_management">
+                <RequireFeature codename="user_management" access="write">
                   <UserFormPage />
                 </RequireFeature>
               }
@@ -58,7 +98,7 @@ export function AppRoutes() {
             <Route
               path="/admin/users/:id"
               element={
-                <RequireFeature codename="user_management">
+                <RequireFeature codename="user_management" access="write">
                   <UserFormPage />
                 </RequireFeature>
               }
@@ -75,16 +115,16 @@ export function AppRoutes() {
             <Route
               path="/admin/roles/new"
               element={
-                <RequireFeature codename="role_management">
-                  <RoleFormPage />
+                <RequireFeature codename="role_management" access="write">
+                  <RoleEditorDrawerPage />
                 </RequireFeature>
               }
             />
             <Route
               path="/admin/roles/:id"
               element={
-                <RequireFeature codename="role_management">
-                  <RoleFormPage />
+                <RequireFeature codename="role_management" access="write">
+                  <RoleEditorDrawerPage />
                 </RequireFeature>
               }
             />
@@ -100,17 +140,21 @@ export function AppRoutes() {
             <Route
               path="/admin/features/new"
               element={
-                <RequireRoleType code="super_admin">
-                  <FeatureFormPage />
-                </RequireRoleType>
+                <RequireFeature codename="role_management" access="write">
+                  <RequireRoleType code="super_admin">
+                    <FeatureEditorDrawerPage />
+                  </RequireRoleType>
+                </RequireFeature>
               }
             />
             <Route
               path="/admin/features/:id"
               element={
-                <RequireRoleType code="super_admin">
-                  <FeatureFormPage />
-                </RequireRoleType>
+                <RequireFeature codename="role_management" access="write">
+                  <RequireRoleType code="super_admin">
+                    <FeatureEditorDrawerPage />
+                  </RequireRoleType>
+                </RequireFeature>
               }
             />
 

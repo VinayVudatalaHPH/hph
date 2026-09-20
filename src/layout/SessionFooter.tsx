@@ -29,7 +29,7 @@ export function SessionFooter() {
     : null;
 
   return (
-    <footer className="flex items-center justify-between border-t border-border bg-surface px-6 py-2 text-xs text-content-muted">
+    <footer className="flex items-center justify-between border-t border-border bg-white/80 px-6 py-2 text-xs text-content-muted backdrop-blur">
       <span>{now.toLocaleString()}</span>
       {sessionDuration && <span>Session duration: {sessionDuration}</span>}
     </footer>

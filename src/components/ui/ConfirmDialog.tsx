@@ -24,9 +24,10 @@ export function ConfirmDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-content-primary/40 p-4">
-      <div className="w-full max-w-sm rounded-lg bg-surface p-6 shadow-popover">
-        <h2 className="text-base font-semibold text-content-primary">{title}</h2>
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-hph-blue/45 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-sm rounded-xl border border-white/60 bg-surface p-6 shadow-popover">
+        <div className="mb-4 h-1 w-12 rounded-full bg-hph-magenta" />
+        <h2 className="text-lg font-semibold text-hph-blue">{title}</h2>
         {description && <p className="mt-2 text-sm text-content-secondary">{description}</p>}
         <div className="mt-6 flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onCancel} disabled={isLoading}>

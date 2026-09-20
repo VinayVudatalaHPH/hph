@@ -7,48 +7,112 @@
 :root {
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  /* Brand scale */
-  --color-brand-50: #eef4ff;
-  --color-brand-100: #dbe7fe;
-  --color-brand-200: #bfd4fe;
-  --color-brand-300: #93b5fd;
-  --color-brand-400: #608bfa;
-  --color-brand-500: #3b66f5;
-  --color-brand-600: #2547ea;
-  --color-brand-700: #1e37d1;
-  --color-brand-800: #202fa8;
-  --color-brand-900: #1f2b85;
+  /* HPH primary palette */
+  --color-hph-blue: #201457;
+  --color-hph-violet: #500d80;
+  --color-hph-magenta: #87037b;
+  --color-hph-crimson: #ce0037;
+  --color-hph-orange: #ff6900;
+
+  /* Reference scales retained from the Figma palette for future components. */
+  --color-blue-00: #140d3a;
+  --color-blue-01: #201457;
+  --color-blue-02: #2c1c6f;
+  --color-blue-03: #3a2a8a;
+  --color-blue-04: #4a3aa3;
+  --color-blue-05: #5e52b8;
+  --color-blue-06: #7a74c9;
+  --color-blue-07: #9a95d8;
+  --color-blue-08: #c1beea;
+  --color-blue-09: #e0dff5;
+  --color-blue-10: #f3f2fb;
+
+  --color-violet-00: #2e064d;
+  --color-violet-01: #500d80;
+  --color-violet-02: #651b97;
+  --color-violet-03: #7a2ead;
+  --color-violet-04: #9147c2;
+  --color-violet-05: #a864d4;
+  --color-violet-06: #be85e0;
+  --color-violet-07: #d3a8ea;
+  --color-violet-08: #e6ccf4;
+  --color-violet-09: #f3e6fa;
+  --color-violet-10: #faf5fd;
+
+  --color-neutral-00: #0b1220;
+  --color-neutral-01: #0e172a;
+  --color-neutral-02: #3d4560;
+  --color-neutral-03: #5c6280;
+  --color-neutral-04: #7a809a;
+  --color-neutral-05: #a09cb0;
+  --color-neutral-06: #c4c2d3;
+  --color-neutral-07: #d6d4e2;
+  --color-neutral-08: #e8e8ee;
+  --color-neutral-09: #ecedf2;
+  --color-neutral-10: #f1f2f6;
+  --color-neutral-11: #ffffff;
+
+  /* Violet action scale, mapped from the Figma light-mode system. */
+  --color-brand-50: #faf5fd;
+  --color-brand-100: #f3e6fa;
+  --color-brand-200: #e6ccf4;
+  --color-brand-300: #d3a8ea;
+  --color-brand-400: #be85e0;
+  --color-brand-500: #7a2ead;
+  --color-brand-600: #500d80;
+  --color-brand-700: #87037b;
+  --color-brand-800: #2e064d;
+  --color-brand-900: #201457;
 
   /* Surfaces */
   --color-surface: #ffffff;
-  --color-surface-muted: #f6f7fb;
-  --color-surface-inset: #eef0f6;
+  --color-surface-muted: #f1f2f6;
+  --color-surface-inset: #e8e8ee;
 
   /* Borders */
-  --color-border: #e2e4ec;
-  --color-border-strong: #c7cade;
+  --color-border: #d6d4e2;
+  --color-border-strong: #c4c2d3;
 
   /* Content (text) */
-  --color-content-primary: #171923;
-  --color-content-secondary: #4a4f63;
-  --color-content-muted: #7a7f95;
+  --color-content-primary: #0b1220;
+  --color-content-secondary: #3d4560;
+  --color-content-muted: #7a809a;
   --color-content-inverted: #ffffff;
 
   /* Semantic */
-  --color-success: #157f45;
-  --color-success-bg: #e7f6ee;
-  --color-danger: #c8283c;
-  --color-danger-bg: #fbe9eb;
-  --color-warning: #a15c07;
-  --color-warning-bg: #fdf1de;
+  --color-success: #1fa755;
+  --color-success-bg: #ebf7ef;
+  --color-danger: #d92d20;
+  --color-danger-bg: #fbedec;
+  --color-warning: #b54708;
+  --color-warning-bg: #fdf4e7;
+
+  /* Stable dashboard-series colors from the HPH brand and status palette. */
+  --color-chart-kairon: #500d80;
+  --color-chart-manual: #87037b;
+  --color-chart-target: #ff6900;
+  --color-chart-productive: #1fa755;
+  --color-chart-downtime: #ce0037;
+  --color-chart-idle: #a09cb0;
+  --color-chart-meeting: #201457;
 
   /* Shape */
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
-  --radius-xl: 1rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
 
   /* Elevation */
-  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.06), 0 1px 3px 0 rgb(15 23 42 / 0.08);
-  --shadow-popover: 0 8px 24px -4px rgb(15 23 42 / 0.16);
+  --shadow-card: 0 1px 2px rgb(32 20 87 / 0.05), 0 8px 24px rgb(32 20 87 / 0.06);
+  --shadow-popover: 0 20px 48px -12px rgb(32 20 87 / 0.24);
+}
+
+@keyframes drawer-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }

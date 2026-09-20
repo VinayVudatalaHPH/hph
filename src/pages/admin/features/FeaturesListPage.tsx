@@ -11,8 +11,8 @@ import { useAuth } from "@/features/auth/useAuth";
 
 export function FeaturesListPage() {
   const { data: features, isLoading, isError, refetch } = useListFeaturesQuery();
-  const { hasRoleType } = useAuth();
-  const canManageFeatures = hasRoleType("super_admin");
+  const { hasRoleType, canWriteFeature } = useAuth();
+  const canManageFeatures = hasRoleType("super_admin") && canWriteFeature("role_management");
 
   const [deactivateFeature, { isLoading: isDeactivating }] = useDeactivateFeatureMutation();
   const [pendingDeactivate, setPendingDeactivate] = useState<Feature | null>(null);

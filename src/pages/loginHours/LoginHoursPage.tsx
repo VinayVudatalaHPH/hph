@@ -1,0 +1,356 @@
+import { useState } from "react";
+
+import { getErrorMessage } from "@/api/apiError";
+import {
+  useListLoginHourRecordsQuery,
+  useListLoginHoursUploadsQuery,
+  useUploadLoginHoursMutation,
+} from "@/api/loginHoursApi";
+import type { LoginHoursUploadBatch } from "@/api/types";
+import { Button } from "@/components/ui/Button";
+import { Drawer } from "@/components/ui/Drawer";
+import { inputClasses } from "@/components/ui/FormField";
+import { PaginationControls } from "@/components/ui/PaginationControls";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/StateViews";
+import { useAuth } from "@/features/auth/useAuth";
+
+interface LoginHoursFilters {
+  userId: number | null;
+  leadId: number | null;
+  cohortId: number | null;
+  fromDate: string;
+  toDate: string;
+}
+
+async function fileToBase64(file: File) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function formatMinutes(minutes: number) {
+  const roundedMinutes = Math.round(minutes);
+  const hours = Math.floor(roundedMinutes / 60);
+  const remainder = roundedMinutes % 60;
+  return `${hours}h ${String(remainder).padStart(2, "0")}m`;
+}
+
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function FilterIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      <path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function LoginHoursPage() {
+  const { user, canWriteFeature } = useAuth();
+  const isManager = user?.role.roleType === "manager";
+  const isLead = user?.role.roleType === "lead";
+  const canSelectUser = isManager || isLead;
+  const canFilter = Boolean(user);
+  const canUpload = isManager && canWriteFeature("login_hours");
+  const scopeDescription = isManager
+    ? "View login hours for your reporting team and upload attendance workbooks."
+    : user?.role.roleType === "lead"
+      ? "View your login hours and the login hours of your direct team members."
+      : "View your login hours.";
+  const [file, setFile] = useState<File | null>(null);
+  const [lastResult, setLastResult] = useState<LoginHoursUploadBatch | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [page, setPage] = useState(1);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
+  const [selectedCohortId, setSelectedCohortId] = useState<number | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<LoginHoursFilters>({
+    userId: null,
+    leadId: null,
+    cohortId: null,
+    fromDate: "",
+    toDate: "",
+  });
+  const [upload, uploadState] = useUploadLoginHoursMutation();
+  const records = useListLoginHourRecordsQuery({
+    page,
+    pageSize: 25,
+    from: fromDate || null,
+    to: toDate || null,
+    userId: selectedUserId,
+    leadId: selectedLeadId,
+    cohortId: selectedCohortId,
+  });
+  const uploads = useListLoginHoursUploadsQuery(undefined, { skip: !isManager });
+  const filterOptions = records.data?.filterOptions;
+
+  const activeFilterCount = canFilter
+    ? Number(canSelectUser && selectedUserId !== null) +
+      Number(isManager && selectedLeadId !== null) +
+      Number(isManager && selectedCohortId !== null) +
+      Number(Boolean(fromDate)) +
+      Number(Boolean(toDate))
+    : 0;
+
+  const openFilters = () => {
+    setDraftFilters({
+      userId: canSelectUser ? selectedUserId : null,
+      leadId: isManager ? selectedLeadId : null,
+      cohortId: isManager ? selectedCohortId : null,
+      fromDate,
+      toDate,
+    });
+    setFiltersOpen(true);
+  };
+
+  const applyFilters = () => {
+    setSelectedUserId(canSelectUser ? draftFilters.userId : null);
+    setSelectedLeadId(isManager ? draftFilters.leadId : null);
+    setSelectedCohortId(isManager ? draftFilters.cohortId : null);
+    setFromDate(draftFilters.fromDate);
+    setToDate(draftFilters.toDate);
+    setPage(1);
+    setFiltersOpen(false);
+  };
+
+  const resetDraftFilters = () => {
+    setDraftFilters({ userId: null, leadId: null, cohortId: null, fromDate: "", toDate: "" });
+  };
+
+  const handleUpload = async () => {
+    if (!file) return;
+    const fileBase64 = await fileToBase64(file);
+    const result = await upload({ sourceFilename: file.name, fileBase64 });
+    if (!("error" in result)) {
+      setLastResult(result.data);
+      setFile(null);
+      setPage(1);
+    }
+  };
+
+  return (
+    <div className="mx-auto flex max-w-screen-2xl flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold text-content-primary">Login hours</h1>
+          <p className="text-sm text-content-muted">{scopeDescription}</p>
+        </div>
+        {canUpload && <Button onClick={() => setShowUpload(true)}>Upload attendance workbook</Button>}
+      </div>
+
+      <Drawer
+        open={canUpload && showUpload}
+        onClose={() => setShowUpload(false)}
+        title="Upload attendance workbook"
+        description="Upload either supported attendance format; only matched CODING users are saved."
+        widthClass="max-w-xl"
+      >
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="flex min-w-80 flex-1 flex-col gap-1.5 text-sm font-medium text-content-secondary">
+              Excel workbook
+              <input
+                className={inputClasses}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            <Button disabled={!file} isLoading={uploadState.isLoading} onClick={() => void handleUpload()}>
+              Upload login hours
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-content-muted">
+            Total Inside is stored as the primary login-hours measure. First in, last out, outside time, total span, status, and anomalies are retained for review.
+          </p>
+
+          {lastResult && (
+            <div className="mt-4 rounded-md border border-border bg-surface-muted p-4 text-sm">
+              <p className="font-medium text-content-primary">Imported {lastResult.matchedCount} matched row(s)</p>
+              <p className="text-content-muted">
+                Detected format: {lastResult.sourceFormat}. Dropped {lastResult.unmatchedCount} unmatched row(s).
+              </p>
+              {(lastResult.unmatchedNames?.length ?? 0) > 0 && (
+                <p className="mt-2 text-content-secondary">Unmatched names: {lastResult.unmatchedNames?.join(", ")}</p>
+              )}
+            </div>
+          )}
+      </Drawer>
+
+      <Drawer
+        open={canFilter && filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        title="Login hours filters"
+        description={isManager ? "Filter attendance by user, reporting lead, cohort, or date range." : isLead ? "Filter attendance for yourself or a direct team member, with an optional date range." : "Filter your attendance by date range."}
+        widthClass="max-w-md"
+      >
+        <div className="flex min-h-full flex-col gap-5">
+          {canSelectUser && (
+            <LoginHoursFilter label="User">
+              <select
+                className={inputClasses}
+                value={draftFilters.userId ?? "ALL"}
+                onChange={(event) => setDraftFilters((current) => ({ ...current, userId: event.target.value === "ALL" ? null : Number(event.target.value) }))}
+              >
+                <option value="ALL">All users</option>
+                {(filterOptions?.users ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+              </select>
+            </LoginHoursFilter>
+          )}
+
+          {isManager && (
+            <>
+              <LoginHoursFilter label="Lead">
+                <select
+                  className={inputClasses}
+                  value={draftFilters.leadId ?? "ALL"}
+                  onChange={(event) => setDraftFilters((current) => ({ ...current, leadId: event.target.value === "ALL" ? null : Number(event.target.value) }))}
+                >
+                  <option value="ALL">All leads</option>
+                  {(filterOptions?.leads ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+              </LoginHoursFilter>
+              <LoginHoursFilter label="Cohort">
+                <select
+                  className={inputClasses}
+                  value={draftFilters.cohortId ?? "ALL"}
+                  onChange={(event) => setDraftFilters((current) => ({ ...current, cohortId: event.target.value === "ALL" ? null : Number(event.target.value) }))}
+                >
+                  <option value="ALL">All cohorts</option>
+                  {(filterOptions?.cohorts ?? []).map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+                </select>
+              </LoginHoursFilter>
+            </>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <LoginHoursFilter label="From">
+              <input
+                className={inputClasses}
+                type="date"
+                max={draftFilters.toDate || undefined}
+                value={draftFilters.fromDate}
+                onChange={(event) => setDraftFilters((current) => ({ ...current, fromDate: event.target.value }))}
+              />
+            </LoginHoursFilter>
+            <LoginHoursFilter label="To">
+              <input
+                className={inputClasses}
+                type="date"
+                min={draftFilters.fromDate || undefined}
+                value={draftFilters.toDate}
+                onChange={(event) => setDraftFilters((current) => ({ ...current, toDate: event.target.value }))}
+              />
+            </LoginHoursFilter>
+          </div>
+
+          <div className="mt-auto flex items-center justify-between gap-3 border-t border-border pt-5">
+            <Button type="button" variant="ghost" onClick={resetDraftFilters}>Reset all</Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" onClick={() => setFiltersOpen(false)}>Cancel</Button>
+              <Button type="button" onClick={applyFilters}>Apply filters</Button>
+            </div>
+          </div>
+        </div>
+      </Drawer>
+
+      <section className="flex flex-col gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
+          <div className="flex w-full max-w-sm items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 shadow-sm">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 text-brand-700"><ClockIcon /></span>
+            <div>
+              <p className="text-xs font-medium text-content-muted">Average inside hours</p>
+              <p className="text-xl font-semibold tracking-tight text-content-primary">
+                {records.data?.averageInsideMinutes == null ? "—" : formatMinutes(records.data.averageInsideMinutes)}
+              </p>
+              <p className="text-[11px] text-content-muted">
+                {records.data ? `${records.data.total} matching ${records.data.total === 1 ? "record" : "records"}` : "Current selection"}
+              </p>
+            </div>
+          </div>
+          {canFilter && (
+            <Button type="button" variant="secondary" onClick={openFilters}>
+              <span className="flex items-center gap-2"><FilterIcon /> Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}</span>
+            </Button>
+          )}
+        </div>
+
+        {records.isLoading ? (
+          <LoadingState label="Loading login hours…" />
+        ) : records.error ? (
+          <ErrorState message={getErrorMessage(records.error)} onRetry={records.refetch} />
+        ) : !records.data || records.data.items.length === 0 ? (
+          <EmptyState title="No login-hour records found" />
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-border bg-surface">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-surface-muted text-xs uppercase tracking-wide text-content-muted">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Date</th>
+                    <th className="px-4 py-3 font-medium">Coder</th>
+                    <th className="px-4 py-3 font-medium">First in</th>
+                    <th className="px-4 py-3 font-medium">Last out</th>
+                    <th className="px-4 py-3 font-medium">Inside</th>
+                    <th className="px-4 py-3 font-medium">Outside</th>
+                    <th className="px-4 py-3 font-medium">Total span</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {records.data.items.map((record) => (
+                    <tr key={record.id}>
+                      <td className="px-4 py-3 text-content-secondary">{record.date}</td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-content-primary">{record.userName}</div>
+                        {record.employeeNameRaw !== record.userName && <div className="text-xs text-content-muted">Source: {record.employeeNameRaw}</div>}
+                      </td>
+                      <td className="px-4 py-3 text-content-secondary">{record.firstIn?.slice(0, 5) ?? "—"}</td>
+                      <td className="px-4 py-3 text-content-secondary">{record.lastOut?.slice(0, 5) ?? "—"}</td>
+                      <td className="px-4 py-3 font-medium text-content-primary">{formatMinutes(record.totalInsideMinutes)}</td>
+                      <td className="px-4 py-3 text-content-secondary">{formatMinutes(record.totalOutsideMinutes)}</td>
+                      <td className="px-4 py-3 text-content-secondary">{formatMinutes(record.totalSpanMinutes)}</td>
+                      <td className="px-4 py-3 text-content-secondary">{record.status ?? "—"}{record.anomalies ? ` · ${record.anomalies} anomal${record.anomalies === 1 ? "y" : "ies"}` : ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <PaginationControls
+              page={records.data.page}
+              pageSize={records.data.pageSize}
+              total={records.data.total}
+              totalPages={records.data.totalPages}
+              onPageChange={setPage}
+            />
+          </div>
+        )}
+      </section>
+
+      {isManager && !uploads.isLoading && !uploads.error && (uploads.data?.length ?? 0) > 0 && (
+        <p className="text-xs text-content-muted">{uploads.data?.length} upload batch(es) retained in the audit history.</p>
+      )}
+    </div>
+  );
+}
+
+function LoginHoursFilter({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1 text-xs font-medium text-content-secondary">
+      {label}
+      {children}
+    </label>
+  );
+}

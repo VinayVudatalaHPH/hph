@@ -1,0 +1,101 @@
+import { apiSlice, providesList } from "./apiSlice";
+import { notifyOnSettle } from "./notify";
+import { buildQueryString } from "./queryString";
+import type {
+  BulkApproveResult,
+  BulkRejectItem,
+  BulkRejectResult,
+  CodingDashboardCard,
+  CodingDashboardQuery,
+  EfficiencySummary,
+  KaironChartRecord,
+  KaironCompletedDailyCount,
+  KaironCompletedRecordQuery,
+  KaironCompletedUserQuery,
+  KaironCompletedUserSummary,
+  ManualDailyRecord,
+  ManualDailyRecordQuery,
+  PaginatedResult,
+  PaginationQuery,
+  SelfKaironChartQuery,
+} from "./types";
+
+export const reportsApi = apiSlice.injectEndpoints({
+  endpoints: (builder) => ({
+    // Always "and it's mine" server-side — see SelfKaironChartQuery's note.
+    getMyKaironRecords: builder.query<PaginatedResult<KaironChartRecord>, SelfKaironChartQuery | void>({
+      query: (args) => ({ url: `/reports/kairon${buildQueryString({ ...args })}` }),
+      providesTags: (result) => providesList("KaironChartRecords", result?.items),
+    }),
+    getKaironCompletedCounts: builder.query<PaginatedResult<KaironCompletedDailyCount>, PaginationQuery | void>({
+      query: (args) => ({ url: `/reports/kairon/completed-counts${buildQueryString({ ...args })}` }),
+      providesTags: [{ type: "KaironChartRecords", id: "LIST" }],
+    }),
+    getKaironCompletedUsers: builder.query<PaginatedResult<KaironCompletedUserSummary>, KaironCompletedUserQuery>({
+      query: (args) => ({ url: `/reports/kairon/completed-users${buildQueryString({ ...args })}` }),
+      providesTags: [{ type: "KaironChartRecords", id: "LIST" }],
+    }),
+    getKaironCompletedRecords: builder.query<PaginatedResult<KaironChartRecord>, KaironCompletedRecordQuery>({
+      query: (args) => ({ url: `/reports/kairon/completed-records${buildQueryString({ ...args })}` }),
+      providesTags: (result) => providesList("KaironChartRecords", result?.items),
+    }),
+    deleteKaironRecord: builder.mutation<{ id: number }, number>({
+      query: (recordId) => ({ url: `/reports/kairon/records/${recordId}`, method: "DELETE" }),
+      invalidatesTags: (_result, _error, recordId) => [
+        { type: "KaironChartRecords", id: recordId },
+        { type: "KaironChartRecords", id: "LIST" },
+        { type: "KaironUploadBatches", id: "LIST" },
+        { type: "CodingDashboard" },
+      ],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        await notifyOnSettle(dispatch, queryFulfilled);
+      },
+    }),
+    getMyManualRecords: builder.query<PaginatedResult<ManualDailyRecord>, PaginationQuery | void>({
+      query: (args) => ({ url: `/reports/manual${buildQueryString({ ...args })}` }),
+      providesTags: (result) => providesList("ManualDailyRecords", result?.items),
+    }),
+    // Other users' records, pending and decided alike (for audit) — never
+    // the reviewing manager's own, which they already see in their own tab.
+    listManualReviews: builder.query<PaginatedResult<ManualDailyRecord>, ManualDailyRecordQuery | void>({
+      query: (args) => ({ url: `/reports/manual/reviews${buildQueryString({ ...args })}` }),
+      providesTags: (result) => providesList("ManualDailyRecords", result?.items),
+    }),
+    bulkApproveManualRecords: builder.mutation<BulkApproveResult, number[]>({
+      query: (ids) => ({ url: "/reports/manual/reviews/bulk-approve", method: "POST", body: { ids } }),
+      invalidatesTags: [{ type: "ManualDailyRecords", id: "LIST" }, { type: "CodingDashboard" }],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        await notifyOnSettle(dispatch, queryFulfilled);
+      },
+    }),
+    bulkRejectManualRecords: builder.mutation<BulkRejectResult, BulkRejectItem[]>({
+      query: (items) => ({ url: "/reports/manual/reviews/bulk-reject", method: "POST", body: { items } }),
+      invalidatesTags: [{ type: "ManualDailyRecords", id: "LIST" }, { type: "CodingDashboard" }],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        await notifyOnSettle(dispatch, queryFulfilled);
+      },
+    }),
+    getCodingDashboard: builder.query<CodingDashboardCard[], CodingDashboardQuery | void>({
+      query: (args) => ({ url: `/dashboards/coding${buildQueryString({ ...args })}` }),
+      providesTags: [{ type: "CodingDashboard" }],
+    }),
+    getMyEfficiency: builder.query<EfficiencySummary, CodingDashboardQuery | void>({
+      query: (args) => ({ url: `/dashboards/my-efficiency${buildQueryString({ ...args })}` }),
+      providesTags: [{ type: "CodingDashboard" }],
+    }),
+  }),
+});
+
+export const {
+  useGetMyKaironRecordsQuery,
+  useGetKaironCompletedCountsQuery,
+  useGetKaironCompletedUsersQuery,
+  useGetKaironCompletedRecordsQuery,
+  useDeleteKaironRecordMutation,
+  useGetMyManualRecordsQuery,
+  useListManualReviewsQuery,
+  useBulkApproveManualRecordsMutation,
+  useBulkRejectManualRecordsMutation,
+  useGetCodingDashboardQuery,
+  useGetMyEfficiencyQuery,
+} = reportsApi;
