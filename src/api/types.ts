@@ -676,6 +676,21 @@ export interface EfficiencySummary {
   daily: DailyEfficiency[];
 }
 
+export interface MonthlyGoalSummary {
+  manualCharts?: number;
+  users?: { userId: number; name: string; manualCharts: number; completedCharts: number; targetCharts: number; difference: number }[];
+  month: string;
+  scope: "self" | "team";
+  userCount: number;
+  completedCharts: number;
+  targetCharts: number;
+  difference: number;
+  calendarWorkingDays: number;
+  eligibleDays: number;
+  holidayCount: number;
+  leaveDaysExcluded: number;
+}
+
 // GET /dashboards/coding response item — one card per user eligible for the
 // selected period, including inactive users through their last working day.
 export interface CodingDashboardCard {

@@ -15,6 +15,7 @@ import type {
   KaironCompletedUserSummary,
   ManualDailyRecord,
   ManualDailyRecordQuery,
+  MonthlyGoalSummary,
   PaginatedResult,
   PaginationQuery,
   SelfKaironChartQuery,
@@ -83,6 +84,10 @@ export const reportsApi = apiSlice.injectEndpoints({
       query: (args) => ({ url: `/dashboards/my-efficiency${buildQueryString({ ...args })}` }),
       providesTags: [{ type: "CodingDashboard" }],
     }),
+    getMonthlyGoal: builder.query<MonthlyGoalSummary, { month?: string } | void>({
+      query: (args) => ({ url: `/dashboards/monthly-goal${buildQueryString({ ...args })}` }),
+      providesTags: [{ type: "CodingDashboard" }],
+    }),
   }),
 });
 
@@ -98,4 +103,5 @@ export const {
   useBulkRejectManualRecordsMutation,
   useGetCodingDashboardQuery,
   useGetMyEfficiencyQuery,
+  useGetMonthlyGoalQuery,
 } = reportsApi;
