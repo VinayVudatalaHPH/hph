@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { getErrorMessage } from "@/api/apiError";
 import { useGetTeamCoderOverviewQuery, useListTeamCohortsQuery } from "@/api/cohortsApi";
 import { useGetCodingDashboardQuery } from "@/api/reportsApi";
-import type { CoderStageFilter, CodingDashboardQuery } from "@/api/types";
+import type { CoderStageFilter, CodingDashboardCard, CodingDashboardQuery } from "@/api/types";
 import { useListUsersQuery } from "@/api/usersApi";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -33,6 +33,13 @@ interface DashboardFilters {
 
 const inputClassName =
   "h-10 rounded-md border border-border bg-surface px-3 text-sm text-content-primary outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100";
+
+// During a rolling backend/frontend deployment, older dashboard responses do
+// not contain isActive. Treat an omitted value as active until the new backend
+// contract is serving.
+function isCardActive(card: CodingDashboardCard) {
+  return card.isActive !== false;
+}
 
 function localDateValue(date = new Date()) {
   const year = date.getFullYear();
@@ -156,7 +163,7 @@ export function CodingDashboardPage() {
   const [cohortId, setCohortId] = useState<"ALL" | number>("ALL");
   const [leadId, setLeadId] = useState<"ALL" | number>("ALL");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [tableUserSearch, setTableUserSearch] = useState("");
+  const [tableUserIds, setTableUserIds] = useState<number[]>([]);
   const [tableLeadId, setTableLeadId] = useState<"ALL" | number>("ALL");
   const [tableCohortId, setTableCohortId] = useState<"ALL" | number>("ALL");
   const [tableStage, setTableStage] = useState<TableStageFilter>("ALL");
@@ -202,29 +209,47 @@ export function CodingDashboardPage() {
     () => new Map((coderOverview.data?.items ?? []).map((item) => [item.coder.id, item])),
     [coderOverview.data],
   );
+  const coderOptions = useMemo(
+    () =>
+      [...(dashboard.data ?? [])].sort((a, b) =>
+        Number(isCardActive(b)) - Number(isCardActive(a)) ||
+        `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`),
+      ),
+    [dashboard.data],
+  );
   const filteredCoderCards = useMemo(() => {
-    const search = tableUserSearch.trim().toLocaleLowerCase();
     return (dashboard.data ?? []).filter((card) => {
       const metadata = coderMetadata.get(card.userId);
       const currentStage = metadata?.currentStage ?? "Unassigned";
-      const matchesUser = !search || `${card.firstName} ${card.lastName} ${card.email}`.toLocaleLowerCase().includes(search);
-      const matchesLead = tableLeadId === "ALL" || metadata?.lead?.id === tableLeadId || card.userId === tableLeadId;
+      const matchesUser = tableUserIds.length === 0 || tableUserIds.includes(card.userId);
+      const matchesLead = tableLeadId === "ALL" || card.leadId === tableLeadId || metadata?.lead?.id === tableLeadId || card.userId === tableLeadId;
       const matchesCohort = tableCohortId === "ALL" || metadata?.cohort?.id === tableCohortId;
       const matchesStage = tableStage === "ALL" || currentStage === tableStage;
       return matchesUser && matchesLead && matchesCohort && matchesStage;
-    });
-  }, [coderMetadata, dashboard.data, tableCohortId, tableLeadId, tableStage, tableUserSearch]);
+    }).sort((a, b) =>
+      Number(isCardActive(b)) - Number(isCardActive(a)) ||
+      `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`),
+    );
+  }, [coderMetadata, dashboard.data, tableCohortId, tableLeadId, tableStage, tableUserIds]);
   const tableFilterCount =
-    Number(Boolean(tableUserSearch.trim())) +
+    Number(tableUserIds.length > 0) +
     Number(tableLeadId !== "ALL") +
     Number(tableCohortId !== "ALL") +
     Number(tableStage !== "ALL");
 
   const clearTableFilters = () => {
-    setTableUserSearch("");
+    setTableUserIds([]);
     setTableLeadId("ALL");
     setTableCohortId("ALL");
     setTableStage("ALL");
+  };
+
+  const toggleTableUser = (userId: number) => {
+    setTableUserIds((selected) =>
+      selected.includes(userId)
+        ? selected.filter((id) => id !== userId)
+        : [...selected, userId],
+    );
   };
 
   const totals = useMemo(
@@ -266,7 +291,7 @@ export function CodingDashboardPage() {
     [dashboard.data],
   );
 
-  const maxCharts = Math.max(totals.kairon, totals.manual, totals.adjustedTarget, 1);
+  const chartDifference = totals.kairon - totals.manual;
   const averageDenominator = totals.loginDays || totals.reportingDays;
   const averageInside = averageDenominator ? totals.insideMinutes / 60 / averageDenominator : 0;
   const averageProductive = averageDenominator ? totals.productiveMinutes / 60 / averageDenominator : 0;
@@ -471,7 +496,7 @@ export function CodingDashboardPage() {
         <ErrorState message={getErrorMessage(dashboard.error)} onRetry={dashboard.refetch} />
       ) : (
         <div className="grid gap-5 lg:grid-cols-5">
-          <article className="rounded-xl border border-border bg-surface p-6 shadow-card lg:col-span-2">
+          <article className="flex flex-col rounded-xl border border-border bg-surface p-6 shadow-card lg:col-span-2">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-content-secondary">
@@ -483,23 +508,17 @@ export function CodingDashboardPage() {
               <span className="rounded-full bg-surface-inset px-3 py-1 text-xs font-medium text-content-secondary">{dashboard.data?.length ?? 0} people</span>
             </div>
 
-            <div className="mt-7 grid gap-6 sm:grid-cols-3">
-              <Metric label="Completed Kairon charts" value={totals.kairon} />
-              <Metric label="Manual charts" value={totals.manual} />
-              <Metric label="Total target goal" value={totals.adjustedTarget} />
-            </div>
-
-            <div className="mt-8 space-y-5" aria-label="Kairon, manual, and target chart comparison">
-              <ComparisonBar label="Kairon" value={totals.kairon} maximum={maxCharts} colorClass="bg-chart-kairon" />
-              <ComparisonBar label="Manual" value={totals.manual} maximum={maxCharts} colorClass="bg-chart-manual" />
-              <ComparisonBar label="Target goal" value={totals.adjustedTarget} maximum={maxCharts} colorClass="bg-chart-target" />
+            <div className="mt-5 grid flex-1 content-center gap-3 sm:grid-cols-2">
+              <ProductionMetric label="Completed Kairon" value={totals.kairon} />
+              <ProductionMetric label="Manual charts" value={totals.manual} />
+              <ProductionMetric label="Kairon − Manual" value={chartDifference} wide />
             </div>
           </article>
 
           <article className="flex flex-col rounded-xl border border-border bg-surface p-6 shadow-card">
             <div className="flex items-center gap-2 text-content-secondary">
               <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-warning-bg text-warning"><MetricIcon kind="downtime" /></span>
-              <h2 className="text-sm font-semibold">Average working hours</h2>
+              <h2 className="text-sm font-semibold">Productive hours</h2>
             </div>
             <WorkingHoursDonut
               inside={averageInside}
@@ -590,17 +609,46 @@ export function CodingDashboardPage() {
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <Filter label="Search users">
-                <div className="relative">
-                  <SearchIcon />
-                  <input
-                    type="search"
-                    value={tableUserSearch}
-                    onChange={(event) => setTableUserSearch(event.target.value)}
-                    placeholder="Name or email"
-                    className={`${inputClassName} w-full pl-9`}
-                  />
-                </div>
+              <Filter label="User">
+                <details className="group relative">
+                  <summary className={`${inputClassName} flex w-full cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden`}>
+                    <span className="truncate">
+                      {tableUserIds.length === 0
+                        ? "All users"
+                        : `${tableUserIds.length} ${tableUserIds.length === 1 ? "user" : "users"} selected`}
+                    </span>
+                    <span className="text-content-muted transition group-open:rotate-180" aria-hidden="true">⌄</span>
+                  </summary>
+                  <div className="absolute z-30 mt-1 max-h-72 w-full min-w-72 overflow-y-auto rounded-lg border border-border bg-surface p-2 shadow-popover">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-surface-muted">
+                      <input
+                        type="checkbox"
+                        checked={tableUserIds.length === 0}
+                        onChange={() => setTableUserIds([])}
+                        className="h-4 w-4 accent-brand-600"
+                      />
+                      <span className="font-medium text-content-primary">All users</span>
+                    </label>
+                    <div className="my-1 border-t border-border" />
+                    {coderOptions.map((candidate) => (
+                      <label key={candidate.userId} className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-2 text-sm hover:bg-surface-muted">
+                        <input
+                          type="checkbox"
+                          checked={tableUserIds.includes(candidate.userId)}
+                          onChange={() => toggleTableUser(candidate.userId)}
+                          className="mt-0.5 h-4 w-4 shrink-0 accent-brand-600"
+                        />
+                        <span className="min-w-0">
+                          <span className="flex flex-wrap items-center gap-1.5 font-medium text-content-primary">
+                            {candidate.firstName} {candidate.lastName}
+                            {!isCardActive(candidate) && <Badge tone="neutral">Inactive</Badge>}
+                          </span>
+                          <span className="block truncate text-xs text-content-muted">{candidate.email}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
               </Filter>
               <Filter label="Lead">
                 <select
@@ -661,9 +709,17 @@ export function CodingDashboardPage() {
                   const kaironPercent = card.efficiency.kaironEfficiencyPercent === null ? null : Number(card.efficiency.kaironEfficiencyPercent);
                   const metadata = coderMetadata.get(card.userId);
                   return (
-                    <tr key={card.userId}>
+                    <tr key={card.userId} className={isCardActive(card) ? undefined : "bg-surface-muted/70"}>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-content-primary">{card.firstName} {card.lastName}</div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`font-medium ${isCardActive(card) ? "text-content-primary" : "text-content-secondary"}`}>
+                            {card.firstName} {card.lastName}
+                          </span>
+                          {!isCardActive(card) && <Badge tone="neutral">Inactive</Badge>}
+                        </div>
+                        {!isCardActive(card) && card.lastWorkingDay && (
+                          <div className="mt-1 text-xs text-content-muted">Last working day: {card.lastWorkingDay}</div>
+                        )}
                         <div className="mt-2">
                           <StageBadge stage={metadata?.currentStage ?? null} />
                         </div>
@@ -708,15 +764,6 @@ function Filter({ label, children }: { label: string; children: React.ReactNode 
   return <label className="flex flex-col gap-1.5"><span className="text-xs font-medium text-content-secondary">{label}</span>{children}</label>;
 }
 
-function SearchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <circle cx="11" cy="11" r="6.5" />
-      <path d="m16 16 4 4" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 function StageBadge({ stage }: { stage: string | null }) {
   const tone =
     stage === "Steady State" || stage === "M4"
@@ -729,8 +776,15 @@ function StageBadge({ stage }: { stage: string | null }) {
   return <Badge tone={tone}>{stage ?? "No current stage"}</Badge>;
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return <div><p className="text-sm text-content-muted">{label}</p><p className="mt-1 text-4xl font-semibold tracking-tight text-content-primary">{formatNumber(value)}</p></div>;
+function ProductionMetric({ label, value, wide = false }: { label: string; value: number; wide?: boolean }) {
+  return (
+    <div className={`rounded-lg border border-border bg-surface-muted px-4 py-3 ${wide ? "sm:col-span-2 sm:flex sm:items-center sm:justify-between sm:gap-4" : ""}`}>
+      <p className="text-xs font-medium text-content-muted">{label}</p>
+      <p className={`${wide ? "mt-1 sm:mt-0" : "mt-2"} text-3xl font-semibold tracking-tight text-content-primary`}>
+        {formatNumber(value)}
+      </p>
+    </div>
+  );
 }
 
 function SmallMetric({ label, value }: { label: string; value: string }) {
@@ -784,8 +838,6 @@ function WorkingHoursDonut({
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="text-3xl font-semibold text-content-primary">{productive.toFixed(1)}h</span>
-          <span className="text-[11px] text-content-muted">avg productive</span>
-          <span className="mt-1 text-[10px] font-medium text-content-secondary">of 8h workday</span>
         </div>
       </div>
       <div className="grid gap-2 border-t border-border pt-4 text-xs">
@@ -804,33 +856,6 @@ function HourStat({ colorClass, label, value }: { colorClass: string; label: str
       <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${colorClass}`} />
       <span className="text-content-secondary">{label}</span>
       <span className="ml-auto font-semibold text-content-primary">{value.toFixed(1)}h</span>
-    </div>
-  );
-}
-
-function ComparisonBar({ label, value, maximum, colorClass }: { label: string; value: number; maximum: number; colorClass: string }) {
-  return (
-    <div>
-      <div className="mb-2 flex items-center justify-between text-xs">
-        <span className="flex items-center gap-2 font-medium text-content-secondary">
-          <span className={`h-2.5 w-2.5 rounded-full ${colorClass}`} aria-hidden="true" />
-          {label}
-        </span>
-        <span className="text-content-muted">{formatNumber(value)}</span>
-      </div>
-      <div
-        className="h-3 overflow-hidden rounded-full bg-surface-inset"
-        role="progressbar"
-        aria-label={`${label}: ${formatNumber(value)}`}
-        aria-valuenow={value}
-        aria-valuemin={0}
-        aria-valuemax={maximum}
-      >
-        <div
-          className={`h-full rounded-full shadow-[inset_0_-1px_0_rgba(0,0,0,0.12)] transition-all duration-500 ${colorClass}`}
-          style={{ width: `${(value / maximum) * 100}%` }}
-        />
-      </div>
     </div>
   );
 }

@@ -1,7 +1,16 @@
 import { apiSlice, providesList } from "./apiSlice";
 import { notifyOnSettle } from "./notify";
 import { buildQueryString } from "./queryString";
-import type { ManualDailyRecord, ManualDailyRecordQuery, ManualDailyRecordUpsertPayload } from "./types";
+import type {
+  ManualBulkUploadPayload,
+  ManualBulkUploadResult,
+  ManualDailyRecord,
+  ManualDailyRecordQuery,
+  ManualDailyRecordUpsertPayload,
+  ManualImportChunkPayload,
+  ManualImportProgress,
+  ManualImportStartPayload,
+} from "./types";
 
 export const manualDailyRecordsApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
@@ -11,6 +20,30 @@ export const manualDailyRecordsApi = apiSlice.injectEndpoints({
     }),
     upsertManualDailyRecord: builder.mutation<ManualDailyRecord, ManualDailyRecordUpsertPayload>({
       query: (body) => ({ url: "/manual-daily-records", method: "POST", body }),
+      invalidatesTags: [{ type: "ManualDailyRecords", id: "LIST" }, { type: "CodingDashboard" }],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        await notifyOnSettle(dispatch, queryFulfilled);
+      },
+    }),
+    uploadManualDailyRecords: builder.mutation<ManualBulkUploadResult, ManualBulkUploadPayload>({
+      query: (body) => ({ url: "/manual-daily-records/bulk-upload", method: "POST", body }),
+      invalidatesTags: [{ type: "ManualDailyRecords", id: "LIST" }, { type: "CodingDashboard" }],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        await notifyOnSettle(dispatch, queryFulfilled);
+      },
+    }),
+    startManualImport: builder.mutation<ManualImportProgress, ManualImportStartPayload>({
+      query: (body) => ({ url: "/manual-daily-records/imports", method: "POST", body }),
+    }),
+    uploadManualImportChunk: builder.mutation<ManualImportProgress, ManualImportChunkPayload>({
+      query: ({ importId, chunkNumber, ...body }) => ({
+        url: `/manual-daily-records/imports/${importId}/chunks/${chunkNumber}`,
+        method: "POST",
+        body,
+      }),
+    }),
+    completeManualImport: builder.mutation<ManualImportProgress, number>({
+      query: (importId) => ({ url: `/manual-daily-records/imports/${importId}/complete`, method: "POST" }),
       invalidatesTags: [{ type: "ManualDailyRecords", id: "LIST" }, { type: "CodingDashboard" }],
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
         await notifyOnSettle(dispatch, queryFulfilled);
@@ -43,7 +76,12 @@ export const manualDailyRecordsApi = apiSlice.injectEndpoints({
 
 export const {
   useListManualDailyRecordsQuery,
+  useLazyListManualDailyRecordsQuery,
   useUpsertManualDailyRecordMutation,
+  useUploadManualDailyRecordsMutation,
+  useStartManualImportMutation,
+  useUploadManualImportChunkMutation,
+  useCompleteManualImportMutation,
   useApproveManualDailyRecordMutation,
   useRejectManualDailyRecordMutation,
 } = manualDailyRecordsApi;

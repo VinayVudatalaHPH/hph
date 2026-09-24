@@ -17,6 +17,13 @@ const TABS: { key: UserStatusFilter; label: string }[] = [
 
 const projectName = (projectId: number | null) => PROJECTS.find((p) => p.id === projectId)?.name ?? "—";
 
+function localDateValue(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function UsersListPage() {
   const [statusTab, setStatusTab] = useState<UserStatusFilter>("all");
   const { data: users, isLoading, isError, refetch } = useListUsersQuery(statusTab);
@@ -25,13 +32,23 @@ export function UsersListPage() {
 
   const [deactivateUser, { isLoading: isDeactivating }] = useDeactivateUserMutation();
   const [pendingDeactivate, setPendingDeactivate] = useState<AdminUser | null>(null);
+  const [lastWorkingDay, setLastWorkingDay] = useState(localDateValue());
   const userNameById = new Map(users?.map((user) => [user.id, `${user.first_name} ${user.last_name}`]));
 
   const handleDeactivate = async () => {
-    if (!pendingDeactivate) return;
+    if (!pendingDeactivate || !lastWorkingDay) return;
     // onQueryStarted (usersApi.ts) already toasts the backend's message.
-    await deactivateUser(pendingDeactivate.id);
-    setPendingDeactivate(null);
+    try {
+      await deactivateUser({ id: pendingDeactivate.id, lastWorkingDay }).unwrap();
+      setPendingDeactivate(null);
+    } catch {
+      // The shared API notification keeps the dialog open and explains the failure.
+    }
+  };
+
+  const openDeactivateDialog = (user: AdminUser) => {
+    setLastWorkingDay(localDateValue());
+    setPendingDeactivate(user);
   };
 
   return (
@@ -80,6 +97,7 @@ export function UsersListPage() {
                 <th className="px-4 py-3 font-medium">Project</th>
                 <th className="px-4 py-3 font-medium">Reports to</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Last working day</th>
                 <th className="px-4 py-3 font-medium" />
               </tr>
             </thead>
@@ -113,6 +131,7 @@ export function UsersListPage() {
                         {user.is_active ? "Active" : "Inactive"}
                       </Badge>
                     </td>
+                    <td className="px-4 py-3 text-content-secondary">{user.last_working_day ?? "—"}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
                         {canManage && (
@@ -121,7 +140,7 @@ export function UsersListPage() {
                           </Link>
                         )}
                         {user.is_active && canManage && (
-                          <Button variant="danger" onClick={() => setPendingDeactivate(user)}>
+                          <Button variant="danger" onClick={() => openDeactivateDialog(user)}>
                             Deactivate
                           </Button>
                         )}
@@ -142,9 +161,22 @@ export function UsersListPage() {
         confirmLabel="Deactivate"
         variant="danger"
         isLoading={isDeactivating}
+        confirmDisabled={!lastWorkingDay}
         onConfirm={handleDeactivate}
         onCancel={() => setPendingDeactivate(null)}
-      />
+      >
+        <label className="mt-4 flex flex-col gap-1.5 text-sm font-medium text-content-secondary">
+          Last working day
+          <input
+            type="date"
+            required
+            value={lastWorkingDay}
+            max={localDateValue()}
+            onChange={(event) => setLastWorkingDay(event.target.value)}
+            className="h-10 rounded-md border border-border bg-surface px-3 text-sm text-content-primary outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+          />
+        </label>
+      </ConfirmDialog>
     </div>
   );
 }

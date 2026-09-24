@@ -54,6 +54,7 @@ export interface AdminUser {
   reports_to_id: number | null;
   first_login: boolean;
   is_active: boolean;
+  last_working_day: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -345,10 +346,10 @@ export interface KaironChartQuery {
   asOfDate?: string | null;
 }
 
-// One row of POST /kairon/uploads (KaironChartRowSchema) — exactly the eleven
-// columns the reference template offers; there is deliberately no field
-// here for Patient or MBI.
+// One cumulative import row. Patient is stripped in the browser. MBI is
+// request-only: the backend fingerprints it and never persists the raw value.
 export interface KaironChartRowInput {
+  mbi: string;
   program: string;
   level: KaironLevel;
   status: KaironStatus;
@@ -362,16 +363,38 @@ export interface KaironChartRowInput {
   practice: string | null;
 }
 
-export interface KaironUploadPayload {
-  asOfDate: string;
-  sourceFilename?: string | null;
+export interface KaironImportProgress {
+  id: number;
+  status: "pending" | "uploading" | "completed" | "failed";
+  sourceFilename: string | null;
+  totalRows: number;
+  processedCount: number;
+  insertedCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  rejectedCount: number;
+  unmatchedCount: number;
+  uploadedAt: string;
+  completedAt: string | null;
+}
+
+export interface KaironImportStartPayload {
+  sourceFilename: string;
+  fileChecksum: string;
+  totalRows: number;
+}
+
+export interface KaironImportChunkPayload {
+  importId: number;
+  chunkNumber: number;
+  checksum: string;
   rows: KaironChartRowInput[];
 }
 
 // GET/POST /kairon/uploads (KaironUploadBatchSchema).
 export interface KaironUploadBatch {
   id: number;
-  asOfDate: string;
+  asOfDate: string | null;
   sourceFilename: string | null;
   uploadedById: number;
   uploadedAt: string;
@@ -434,6 +457,66 @@ export interface ManualDailyRecordUpsertPayload {
   noInventoryIdleTimeHours: number;
   leaveHours: number;
   meetingEngagementHours: number;
+}
+
+export interface ManualBulkUploadPayload {
+  recordDate: string;
+  sourceFilename: string;
+  fileBase64: string;
+}
+
+export interface ManualBulkUploadResult {
+  recordDate: string;
+  sourceFilename: string;
+  sheetName: string;
+  rowCount: number;
+  importedCount: number;
+  createdCount: number;
+  updatedCount: number;
+}
+
+export interface ManualBulkUploadRowError {
+  row: number;
+  email?: string;
+  name?: string;
+  date?: string;
+  message: string;
+}
+
+export interface ManualImportRow {
+  userId: number;
+  date: string;
+  productionCount: number;
+  techIssuesDowntimeHours: number;
+  noInventoryIdleTimeHours: number;
+  leaveHours: number;
+  meetingEngagementHours: number;
+}
+
+export interface ManualImportStartPayload {
+  sourceFilename: string;
+  fileChecksum: string;
+  totalRows: number;
+}
+
+export interface ManualImportProgress {
+  id: number;
+  status: "uploading" | "completed";
+  sourceFilename: string;
+  totalRows: number;
+  processedCount: number;
+  createdCount: number;
+  updatedCount: number;
+  unchangedCount: number;
+  uploadedAt: string;
+  completedAt: string | null;
+}
+
+export interface ManualImportChunkPayload {
+  importId: number;
+  chunkNumber: number;
+  checksum: string;
+  rows: ManualImportRow[];
 }
 
 export interface ManualDailyRecordQuery {
@@ -593,12 +676,16 @@ export interface EfficiencySummary {
   daily: DailyEfficiency[];
 }
 
-// GET /dashboards/coding response item — one card per active user.
+// GET /dashboards/coding response item — one card per user eligible for the
+// selected period, including inactive users through their last working day.
 export interface CodingDashboardCard {
   userId: number;
   firstName: string;
   lastName: string;
   email: string;
+  isActive: boolean;
+  lastWorkingDay: string | null;
+  leadId: number | null;
   kairon: CodingDashboardKaironSummary;
   manual: CodingDashboardManualSummary;
   efficiency: EfficiencySummary;

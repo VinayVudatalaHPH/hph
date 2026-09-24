@@ -69,9 +69,13 @@ export const usersApi = apiSlice.injectEndpoints({
         await notifyOnSettle(dispatch, queryFulfilled);
       },
     }),
-    deactivateUser: builder.mutation<null, number>({
-      query: (id) => ({ url: `/users/${id}`, method: "DELETE" }),
-      invalidatesTags: (_result, _error, id) => [
+    deactivateUser: builder.mutation<null, { id: number; lastWorkingDay: string }>({
+      query: ({ id, lastWorkingDay }) => ({
+        url: `/users/${id}`,
+        method: "DELETE",
+        body: { last_working_day: lastWorkingDay },
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
         { type: "Users", id },
         { type: "Users", id: "LIST" },
       ],

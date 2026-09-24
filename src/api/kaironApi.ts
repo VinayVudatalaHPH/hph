@@ -6,8 +6,10 @@ import type {
   KaironAnalystReviewStatus,
   KaironChartQuery,
   KaironChartRecord,
+  KaironImportChunkPayload,
+  KaironImportProgress,
+  KaironImportStartPayload,
   KaironUploadBatch,
-  KaironUploadPayload,
 } from "./types";
 
 export const kaironApi = apiSlice.injectEndpoints({
@@ -20,12 +22,21 @@ export const kaironApi = apiSlice.injectEndpoints({
       query: () => ({ url: "/kairon/uploads" }),
       providesTags: (result) => providesList("KaironUploadBatches", result),
     }),
-    uploadKaironBatch: builder.mutation<KaironUploadBatch, KaironUploadPayload>({
-      query: (body) => ({ url: "/kairon/uploads", method: "POST", body }),
+    startKaironImport: builder.mutation<KaironImportProgress, KaironImportStartPayload>({
+      query: (body) => ({ url: "/kairon/imports", method: "POST", body }),
+    }),
+    uploadKaironImportChunk: builder.mutation<KaironImportProgress, KaironImportChunkPayload>({
+      query: ({ importId, chunkNumber, checksum, rows }) => ({
+        url: `/kairon/imports/${importId}/chunks/${chunkNumber}`,
+        method: "POST",
+        body: { checksum, rows },
+      }),
+    }),
+    completeKaironImport: builder.mutation<KaironImportProgress, number>({
+      query: (importId) => ({ url: `/kairon/imports/${importId}/complete`, method: "POST" }),
       invalidatesTags: [
         { type: "KaironUploadBatches", id: "LIST" },
         { type: "KaironChartRecords", id: "LIST" },
-        { type: "KaironAnalystReviews", id: "LIST" },
         { type: "CodingDashboard" },
       ],
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
@@ -58,7 +69,9 @@ export const kaironApi = apiSlice.injectEndpoints({
 export const {
   useListKaironChartsQuery,
   useListKaironUploadBatchesQuery,
-  useUploadKaironBatchMutation,
+  useStartKaironImportMutation,
+  useUploadKaironImportChunkMutation,
+  useCompleteKaironImportMutation,
   useListKaironAnalystReviewsQuery,
   useResolveKaironAnalystReviewMutation,
 } = kaironApi;

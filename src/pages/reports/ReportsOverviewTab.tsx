@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getErrorMessage } from "@/api/apiError";
 import { useGetCodingDashboardQuery, useGetMyEfficiencyQuery } from "@/api/reportsApi";
@@ -9,6 +9,7 @@ import { useAuth } from "@/features/auth/useAuth";
 
 type SeriesKey = "adjustedTarget" | "manualCharts" | "kaironCharts";
 type LostHourKey = "idle" | "downtime" | "leave" | "meeting";
+type VisibleLostHourKey = Exclude<LostHourKey, "leave">;
 type GraphInterval = "day" | "week" | "month";
 
 const LOGIN_HOURS_REPORTING_START = "2026-08-11";
@@ -31,10 +32,9 @@ const SERIES: Array<{ key: SeriesKey; label: string; color: string; dashed?: boo
   { key: "kaironCharts", label: "Kairon charts", color: "var(--color-chart-kairon)" },
 ];
 
-const LOST_HOUR_SERIES: Array<{ key: LostHourKey; label: string; color: string }> = [
+const LOST_HOUR_SERIES: Array<{ key: VisibleLostHourKey; label: string; color: string }> = [
   { key: "idle", label: "Idle", color: "var(--color-warning)" },
   { key: "downtime", label: "Downtime", color: "var(--color-chart-downtime)" },
-  { key: "leave", label: "Leave", color: "var(--color-brand-500)" },
   { key: "meeting", label: "Meetings", color: "#4f91a8" },
 ];
 
@@ -228,15 +228,7 @@ export function TeamPerformanceGraphs({ cards }: { cards: CodingDashboardCard[] 
         result.noLogin = result.noLogin || noLogin;
         return result;
       }, { date, idle: 0, downtime: 0, leave: 0, meeting: 0, noLogin: false });
-      return cards.length > 0
-        ? {
-            ...aggregate,
-            idle: aggregate.idle / cards.length,
-            downtime: aggregate.downtime / cards.length,
-            leave: aggregate.leave / cards.length,
-            meeting: aggregate.meeting / cards.length,
-          }
-        : aggregate;
+      return aggregate;
     });
   }, [cards, fromDate, toDate]);
   const displayedProductionRows = useMemo(
@@ -332,16 +324,7 @@ export function ReportsOverviewTab() {
           result.noLogin = result.noLogin || noLogin;
           return result;
         }, { date, idle: 0, downtime: 0, leave: 0, meeting: 0, noLogin: false });
-        const coderCount = teamCards.length;
-        return coderCount > 0
-          ? {
-              ...aggregate,
-              idle: aggregate.idle / coderCount,
-              downtime: aggregate.downtime / coderCount,
-              leave: aggregate.leave / coderCount,
-              meeting: aggregate.meeting / coderCount,
-            }
-          : aggregate;
+        return aggregate;
       }
       const row = rowsByDate.get(date);
       const noLogin = !beforeLoginHoursReporting && (!row || row.insideMinutes === null);
@@ -451,6 +434,7 @@ export function ReportsOverviewTab() {
 }
 
 function LostHoursChart({ rows, teamView, interval }: { rows: LostHoursDay[]; teamView: boolean; interval: GraphInterval }) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const chartWidth = Math.max(760, rows.length * 58);
   const chartHeight = 340;
   const margin = { top: 28, right: 28, bottom: 62, left: 52 };
@@ -458,14 +442,20 @@ function LostHoursChart({ rows, teamView, interval }: { rows: LostHoursDay[]; te
   const plotHeight = chartHeight - margin.top - margin.bottom;
   const totals = Object.fromEntries(
     LOST_HOUR_SERIES.map((series) => [series.key, rows.reduce((sum, row) => sum + row[series.key], 0)]),
-  ) as Record<LostHourKey, number>;
+  ) as Record<VisibleLostHourKey, number>;
   const rawMaximum = Math.max(...rows.map((row) => LOST_HOUR_SERIES.reduce((sum, series) => sum + row[series.key], 0)), 8);
   const yMaximum = Math.ceil(rawMaximum);
   const y = (value: number) => margin.top + plotHeight - value / yMaximum * plotHeight;
   const bandWidth = plotWidth / rows.length;
   const barWidth = Math.min(34, bandWidth * 0.62);
   const x = (index: number) => margin.left + bandWidth * index + (bandWidth - barWidth) / 2;
-  const labelInterval = Math.max(1, Math.ceil(rows.length / 12));
+  const labelInterval = interval === "day" ? 1 : Math.max(1, Math.ceil(rows.length / 12));
+  const latestDate = rows[rows.length - 1]?.date;
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) container.scrollLeft = container.scrollWidth - container.clientWidth;
+  }, [chartWidth, interval, latestDate]);
 
   return (
     <article className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface shadow-card">
@@ -474,21 +464,21 @@ function LostHoursChart({ rows, teamView, interval }: { rows: LostHoursDay[]; te
           <h3 className="font-semibold capitalize text-content-primary">{interval}-wise lost hours by reason</h3>
           <p className="text-sm text-content-muted">
             {teamView
-              ? "Daily bars and legend totals are average hours per coder. A missing weekday Login Hours record contributes 8 hours of leave."
-              : "A weekday without a Login Hours record is displayed as 8 hours of leave."} Before August 11, 2026, leave is not inferred; available idle, downtime, and meeting time is still shown. Weekends are excluded.
+              ? "Daily bars show the team's total idle, downtime, and meeting hours; the legend shows totals for the selected period."
+              : "Daily bars show idle, downtime, and meeting hours."} Weekends are excluded.
           </p>
         </div>
         <div className="flex flex-wrap justify-end gap-x-4 gap-y-2 text-xs text-content-secondary">
           {LOST_HOUR_SERIES.map((series) => (
             <span key={series.key} className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: series.color }} />
-              {teamView ? `Avg ${series.label.toLowerCase()}` : series.label} <strong className="text-content-primary">{totals[series.key].toFixed(1)}h</strong>
+              {series.label} <strong className="text-content-primary">{totals[series.key].toFixed(1)}h</strong>
             </span>
           ))}
         </div>
       </div>
-      <div className="overflow-x-auto px-3 pb-3 pt-2">
-        <svg width={chartWidth} height={chartHeight} role="img" aria-label="Daily lost hours by idle time, downtime, leave, and meetings">
+      <div ref={scrollContainerRef} className="overflow-x-auto px-3 pb-3 pt-2">
+        <svg width={chartWidth} height={chartHeight} role="img" aria-label="Daily lost hours by idle time, downtime, and meetings">
           {[0, 1, 2, 3, 4].map((tick) => {
             const value = yMaximum * tick / 4;
             const yPosition = y(value);
@@ -514,7 +504,7 @@ function LostHoursChart({ rows, teamView, interval }: { rows: LostHoursDay[]; te
                   return (
                     <g key={series.key}>
                       <rect x={x(index)} y={topY} width={barWidth} height={height} fill={series.color} rx="2">
-                        <title>{`${row.label ?? row.date} · ${!teamView && row.noLogin ? "No login record · " : ""}${teamView ? `Average ${series.label.toLowerCase()}` : series.label}: ${value.toFixed(1)} hours`}</title>
+                        <title>{`${row.label ?? row.date} · ${!teamView && row.noLogin ? "No login record · " : ""}${series.label}: ${value.toFixed(1)} hours`}</title>
                       </rect>
                       {height >= 18 && (
                         <text x={x(index) + barWidth / 2} y={topY + height / 2 + 4} textAnchor="middle" fontSize="10" fontWeight="600" fill="white">
@@ -562,6 +552,7 @@ function CpdCard({ label, value, achievement: achievementValue }: { label: strin
 }
 
 function DailyProductionChart({ rows, interval }: { rows: ProductionDay[]; interval: GraphInterval }) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const chartWidth = Math.max(760, rows.length * 58);
   const chartHeight = 360;
   const margin = { top: 28, right: 28, bottom: 62, left: 52 };
@@ -572,7 +563,13 @@ function DailyProductionChart({ rows, interval }: { rows: ProductionDay[]; inter
   const yMaximum = Math.max(5, Math.ceil(rawMaximum / 5) * 5);
   const x = (index: number) => margin.left + (rows.length === 1 ? plotWidth / 2 : index * plotWidth / (rows.length - 1));
   const y = (value: number) => margin.top + plotHeight - value / yMaximum * plotHeight;
-  const labelInterval = Math.max(1, Math.ceil(rows.length / 12));
+  const labelInterval = interval === "day" ? 1 : Math.max(1, Math.ceil(rows.length / 12));
+  const latestDate = rows[rows.length - 1]?.date;
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) container.scrollLeft = container.scrollWidth - container.clientWidth;
+  }, [chartWidth, interval, latestDate]);
 
   const pointsFor = (key: SeriesKey) => rows.flatMap((row, index) => {
     const value = row[key];
@@ -614,7 +611,7 @@ function DailyProductionChart({ rows, interval }: { rows: ProductionDay[]; inter
           ))}
         </div>
       </div>
-      <div className="overflow-x-auto px-3 pb-3 pt-2">
+      <div ref={scrollContainerRef} className="overflow-x-auto px-3 pb-3 pt-2">
         <svg width={chartWidth} height={chartHeight} role="img" aria-label="Daily adjusted target, Manual charts, and Kairon charts comparison graph">
           {[0, 1, 2, 3, 4].map((tick) => {
             const value = yMaximum * tick / 4;
