@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: hph-frontend
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
